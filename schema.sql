@@ -192,6 +192,32 @@ create table if not exists public.import_batches (
   completed_at timestamptz
 );
 
+-- -----------------------------------------------------------------------------
+-- Admin signup gate: security questions (answers stored as bcrypt hashes only)
+-- Frontend fetches questions via admin_gate_get_random_questions (no answers).
+-- Verification runs only from Edge Function using service role + admin_gate_verify_answers.
+-- -----------------------------------------------------------------------------
+create table if not exists public.admin_security_questions (
+  id uuid primary key default gen_random_uuid(),
+  question_text text not null,
+  answer_hash text not null,
+  is_active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists admin_security_questions_active_idx
+on public.admin_security_questions (is_active) where is_active = true;
+
+drop trigger if exists admin_security_questions_set_updated_at on public.admin_security_questions;
+create trigger admin_security_questions_set_updated_at
+before update on public.admin_security_questions
+for each row execute function public.set_updated_at();
+
+-- RLS: block direct reads of answer_hash from clients; RPC + service role bypass RLS.
+alter table public.admin_security_questions enable row level security;
+
 -- RLS
 alter table public.profiles enable row level security;
 alter table public.user_roles enable row level security;
@@ -202,6 +228,70 @@ alter table public.plant_tags enable row level security;
 alter table public.plant_tag_assignments enable row level security;
 alter table public.plant_content_sections enable row level security;
 alter table public.import_batches enable row level security;
+
+-- Random active questions for signup UI (id + text only; never exposes answer_hash)
+create or replace function public.admin_gate_get_random_questions(p_limit int default 2)
+returns table (id uuid, question_text text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select q.id, q.question_text
+  from public.admin_security_questions q
+  where q.is_active = true
+  order by random()
+  limit greatest(1, least(p_limit, 10));
+$$;
+
+-- Server-side only: compares bcrypt hash using normalized answer (trim + lower)
+create or replace function public.admin_gate_verify_answers(p_ids uuid[], p_answers text[])
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  i int;
+  v_hash text;
+  v_answer text;
+begin
+  if coalesce(array_length(p_ids, 1), 0) is distinct from 2
+     or coalesce(array_length(p_answers, 1), 0) is distinct from 2 then
+    return false;
+  end if;
+  if p_ids[1] = p_ids[2] then
+    return false;
+  end if;
+
+  for i in 1..2 loop
+    select aq.answer_hash into v_hash
+    from public.admin_security_questions aq
+    where aq.id = p_ids[i] and aq.is_active = true;
+
+    if v_hash is null then
+      return false;
+    end if;
+
+    v_answer := trim(lower(coalesce(p_answers[i], '')));
+    if v_answer = '' then
+      return false;
+    end if;
+
+    if crypt(v_answer, v_hash) is distinct from v_hash then
+      return false;
+    end if;
+  end loop;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.admin_gate_get_random_questions(int) from public;
+grant execute on function public.admin_gate_get_random_questions(int) to anon, authenticated, service_role;
+
+revoke all on function public.admin_gate_verify_answers(uuid[], text[]) from public;
+grant execute on function public.admin_gate_verify_answers(uuid[], text[]) to service_role;
 
 create or replace function public.is_admin()
 returns boolean
@@ -234,6 +324,37 @@ as $$
 $$;
 
 grant execute on function public.is_super_admin() to authenticated;
+
+-- After sign-in: if the user has a profile but no row in user_roles, grant `admin`.
+-- Use only when public email signup is disabled (see README). Lets manually created Auth users sign in without a separate SQL bootstrap for user_roles.
+create or replace function public.ensure_default_admin_role()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    return;
+  end if;
+  if exists (select 1 from public.user_roles ur where ur.user_id = uid) then
+    return;
+  end if;
+  if not exists (select 1 from public.profiles p where p.id = uid) then
+    return;
+  end if;
+  insert into public.user_roles (user_id, role)
+  values (uid, 'admin'::public.app_role);
+exception
+  when unique_violation then
+    null;
+end;
+$$;
+
+revoke all on function public.ensure_default_admin_role() from public;
+grant execute on function public.ensure_default_admin_role() to authenticated;
 
 -- Profiles: own row + admins can read all (team / ops)
 drop policy if exists profiles_select_own on public.profiles;
@@ -360,6 +481,16 @@ using (bucket_id = 'plant-qr' and public.is_admin());
 create policy storage_plant_qr_delete on storage.objects
 for delete to authenticated
 using (bucket_id = 'plant-qr' and public.is_admin());
+
+-- -----------------------------------------------------------------------------
+-- Admin gate: seed at least TWO active questions before using /signup.
+-- Answers are stored as bcrypt hashes; compare uses trim(lower(user_input)).
+--
+-- insert into public.admin_security_questions (question_text, answer_hash, is_active)
+-- values
+--   ('Your first question here?', crypt(lower(trim('correct answer one')), gen_salt('bf')), true),
+--   ('Your second question here?', crypt(lower(trim('correct answer two')), gen_salt('bf')), true);
+-- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
 -- Optional: trigger so new Auth users get a profile (enable in Supabase Dashboard

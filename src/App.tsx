@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/pages/LoginPage'
+import { AdminSignupPage } from '@/pages/AdminSignupPage'
 import { NoAccessPage } from '@/pages/NoAccessPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { PlantsPage } from '@/pages/PlantsPage'
@@ -36,6 +37,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<AdminSignupPage />} />
         <Route
           path="/"
           element={

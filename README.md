@@ -7,17 +7,28 @@ Clean admin dashboard for managing plants, tags, flexible content sections, phot
 1. Create a Supabase project.
 2. In the SQL Editor, run the entire [`schema.sql`](./schema.sql) file once. It creates tables, RLS policies, helper functions, storage buckets `plant-photos` and `plant-qr`, and storage policies for authenticated admins.
 3. **Auth → Triggers**: add a trigger on `auth.users` after insert to call `public.handle_new_user()` so every new user gets a `profiles` row (function is included in `schema.sql`).
-4. Create your first admin user (Auth → Users → Add user) and confirm they can sign in.
-5. **Bootstrap `super_admin`** (one SQL line, one time only):
+4. **Close public signup** (recommended): Supabase **Authentication → Providers → Email** (or main Auth settings) → **disable** open sign-up so accounts can only be created through the gated flow or the Admin API. Otherwise someone could bypass the security questions using `signUp` with the anon key.
+
+   **Auto `admin` on sign-in:** The RPC `ensure_default_admin_role()` runs after each login (from the app). If the user has a **`profiles` row** but **no `user_roles` row**, they automatically get role **`admin`**. That way manually added Auth users (with a profile from `handle_new_user`) can sign in without running SQL for `user_roles`. This is **not** safe if random people can create accounts—keep public signup off.
+5. **Admin security questions**: In SQL Editor, insert **at least two** active questions with **bcrypt** hashes (answers are checked as trim + lowercase). Example:
+
+   ```sql
+   insert into public.admin_security_questions (question_text, answer_hash, is_active)
+   values
+     ('What is your internal project codeword?', crypt(lower(trim('your-secret-answer')), gen_salt('bf')), true),
+     ('What city is HQ in?', crypt(lower(trim('your-city')), gen_salt('bf')), true);
+   ```
+
+6. **Bootstrap `super_admin`** (one SQL line, one time only — for the first person who manages Team / questions):
 
    ```sql
    insert into public.user_roles (user_id, role)
    values ('YOUR_AUTH_USER_UUID', 'super_admin');
    ```
 
-   After this, additional admins can be granted roles from **Team** in the app (super admins only).
+   Other admins can use **`/signup`** on the site (security questions + email/password) and receive role `admin`, or be added under **Team** by a super admin.
 
-6. Deploy the Edge Function and secrets (see below).
+7. Deploy Edge Functions (see below): `plant-qr-upsert` and **`admin-signup`**.
 
 ## Edge Function: `plant-qr-upsert`
 
@@ -31,6 +42,20 @@ supabase functions deploy plant-qr-upsert
 Required function secrets (usually auto-provided by Supabase): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Set `QR_PUBLIC_BASE_URL` to the URL prefix encoded in each QR (must match what the mobile app will resolve).
 
 The function verifies the caller’s JWT, checks `user_roles` for `admin` / `super_admin`, then creates or regenerates the primary QR PNG in Storage and updates `plant_qr_codes`.
+
+## Edge Function: `admin-signup` (gated admin registration)
+
+Creates a confirmed Auth user, `profiles` row, and `user_roles.role = 'admin'` **only** if two security answers pass `admin_gate_verify_answers` (service role only; answers are never exposed to the browser).
+
+```bash
+supabase functions deploy admin-signup
+```
+
+Uses the same auto-provided secrets as other functions (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`). No extra secrets required.
+
+**Flow:** `/signup` loads two random questions via RPC `admin_gate_get_random_questions` (questions only). Submit calls `admin-signup`, which verifies answers server-side, then creates the user.
+
+**Promote to `super_admin`:** still done with SQL or **Team** (existing super admins only).
 
 ## Local development
 

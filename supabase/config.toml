@@ -6,3 +6,6 @@ enabled = true
 
 [functions.plant-qr-upsert]
 verify_jwt = true
+
+[functions.admin-signup]
+verify_jwt = false

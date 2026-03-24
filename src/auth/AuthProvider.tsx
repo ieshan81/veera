@@ -13,6 +13,16 @@ async function fetchRoles(userId: string): Promise<AppRole[]> {
   return (data as { role: AppRole }[]).map((r) => r.role)
 }
 
+/** If the user has no roles yet but has a profile, DB assigns `admin` (see ensure_default_admin_role). */
+async function fetchRolesWithAutoAdmin(userId: string): Promise<AppRole[]> {
+  let roles = await fetchRoles(userId)
+  if (roles.length > 0) return roles
+  const { error } = await supabase.rpc('ensure_default_admin_role')
+  if (error) return []
+  roles = await fetchRoles(userId)
+  return roles
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
@@ -27,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s)
       setUser(s?.user ?? null)
       if (s?.user?.id) {
-        setRoles(await fetchRoles(s.user.id))
+        setRoles(await fetchRolesWithAutoAdmin(s.user.id))
       } else {
         setRoles([])
       }
@@ -62,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRoles([])
       return
     }
-    setRoles(await fetchRoles(user.id))
+    setRoles(await fetchRolesWithAutoAdmin(user.id))
   }, [user])
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -73,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.session && data.user) {
       setSession(data.session)
       setUser(data.user)
-      const r = await fetchRoles(data.user.id)
+      const r = await fetchRolesWithAutoAdmin(data.user.id)
       setRoles(r)
       const admin = r.some((role) => role === 'admin' || role === 'super_admin')
       return { error: null, isAdmin: admin }
