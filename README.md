@@ -73,3 +73,15 @@ After the one-time setup, routine work is done **only in this admin UI**: plants
 - `src/` — React app (routes under `src/pages`, auth in `src/auth`, UI primitives in `src/components/ui`)
 - `schema.sql` — Postgres + RLS + storage setup
 - `supabase/functions/plant-qr-upsert` — QR generation and storage upload
+
+## Troubleshooting: sign-in “does nothing” on Netlify
+
+1. **Environment variables** — `VITE_*` values are baked in at **build** time. In Netlify: Site configuration → Environment variables → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then **Clear cache and deploy site**. If they were missing, the login page will show an amber warning after redeploy.
+2. **Admin role** — After a successful password sign-in, you must have a row in `user_roles` for your user (bootstrap SQL above). If not, the app will show a clear message instead of staying silent.
+3. **RLS (existing databases)** — If you applied an older schema, run this in the SQL editor so users can read their own roles (required for login):
+
+   ```sql
+   drop policy if exists user_roles_select_own on public.user_roles;
+   create policy user_roles_select_own on public.user_roles
+   for select using (auth.uid() = user_id);
+   ```

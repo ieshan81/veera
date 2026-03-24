@@ -8,7 +8,11 @@ export type AuthContextValue = {
   roles: AppRole[]
   loading: boolean
   refreshRoles: () => Promise<void>
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  /** On success, `isAdmin` tells you if user_roles allows access (avoids race with async auth listener). */
+  signIn: (
+    email: string,
+    password: string,
+  ) => Promise<{ error: Error | null; isAdmin?: boolean }>
   signOut: () => Promise<void>
   isAdmin: boolean
   isSuperAdmin: boolean

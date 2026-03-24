@@ -8,3 +8,8 @@ if (!url || !anon) {
 }
 
 export const supabase = createClient(url ?? '', anon ?? '')
+
+/** False on Netlify if env vars were not set at build time. */
+export function hasSupabaseConfig(): boolean {
+  return Boolean(url?.trim() && anon?.trim())
+}

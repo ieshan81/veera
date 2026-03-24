@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Leaf } from 'lucide-react'
 import { useAuth } from '@/auth/useAuth'
+import { hasSupabaseConfig } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,10 +31,25 @@ export function LoginPage() {
     return <Navigate to="/" replace />
   }
 
+  const configOk = hasSupabaseConfig()
+
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null)
-    const { error } = await signIn(values.email, values.password)
-    if (error) setFormError(error.message)
+    try {
+      const result = await signIn(values.email, values.password)
+      if (result.error) {
+        setFormError(result.error.message)
+        return
+      }
+      if (result.isAdmin === false) {
+        setFormError(
+          'You signed in successfully, but this account does not have admin access. A super admin must add your user ID under Team, or add a row in Supabase for `user_roles` (see README bootstrap step).',
+        )
+        return
+      }
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Sign-in failed. Check your connection and try again.')
+    }
   })
 
   return (
@@ -65,7 +81,15 @@ export function LoginPage() {
               ) : null}
             </div>
             {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
-            <Button type="submit" className="w-full" disabled={isSubmitting || loading}>
+            {!configOk ? (
+              <p className="text-sm text-amber-800">
+                This site is missing <code className="rounded bg-amber-100 px-1">VITE_SUPABASE_URL</code> or{' '}
+                <code className="rounded bg-amber-100 px-1">VITE_SUPABASE_ANON_KEY</code>. In Netlify go to Site
+                configuration → Environment variables, add both, then trigger a new deploy (values must be present at
+                build time).
+              </p>
+            ) : null}
+            <Button type="submit" className="w-full" disabled={isSubmitting || !configOk}>
               {isSubmitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>

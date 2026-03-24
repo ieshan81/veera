@@ -33,12 +33,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (cancelled) return
-      void applySession(s).finally(() => {
+    void supabase.auth
+      .getSession()
+      .then(({ data: { session: s } }) => {
+        if (cancelled) return
+        void applySession(s).finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+      })
+      .catch(() => {
         if (!cancelled) setLoading(false)
       })
-    })
 
     const {
       data: { subscription },
@@ -61,8 +66,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error: error as Error | null }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      return { error: error as Error }
+    }
+    if (data.session && data.user) {
+      setSession(data.session)
+      setUser(data.user)
+      const r = await fetchRoles(data.user.id)
+      setRoles(r)
+      const admin = r.some((role) => role === 'admin' || role === 'super_admin')
+      return { error: null, isAdmin: admin }
+    }
+    return { error: null, isAdmin: false }
   }, [])
 
   const signOut = useCallback(async () => {

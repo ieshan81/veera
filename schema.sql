@@ -244,6 +244,11 @@ drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles
 for update using (auth.uid() = id);
 
+-- Users can always read their own role rows (needed for login + fetchRoles without chicken/egg with is_admin()).
+drop policy if exists user_roles_select_own on public.user_roles;
+create policy user_roles_select_own on public.user_roles
+for select using (auth.uid() = user_id);
+
 drop policy if exists user_roles_select_admin on public.user_roles;
 create policy user_roles_select_admin on public.user_roles
 for select using (public.is_admin());
