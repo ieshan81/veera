@@ -61,7 +61,7 @@ export function TeamPage() {
       if (error) throw error
     },
     onSuccess: () => {
-      setMsg('Role added. User must have signed up at least once (profile exists).')
+      setMsg('Role added.')
       reset()
       void qc.invalidateQueries({ queryKey: ['team'] })
     },
@@ -85,8 +85,8 @@ export function TeamPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Team</h1>
         <p className="text-sm text-slate-600">
-          Grant admin access by user id from Supabase Auth (Users). The user must already exist so a profile row is
-          present.
+          Grant admin access by user UUID from Supabase → Authentication → Users. A profile row must exist (apply full
+          `schema.sql` so the auth trigger creates profiles for new users, or run `scripts/manual-admin-user.sql`).
         </p>
       </div>
 

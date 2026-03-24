@@ -83,11 +83,12 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Unconfirmed until user clicks link in email (enable "Confirm email" in Supabase Auth → Providers → Email).
+    // Confirmed immediately so new admins can sign in without waiting on email (Dashboard SMTP optional).
+    // To require email confirmation instead, set email_confirm: false and ensure Auth → Email + redirect URLs work.
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
       password,
-      email_confirm: false,
+      email_confirm: true,
     })
 
     if (createErr || !created?.user?.id) {
@@ -126,7 +127,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Could not assign admin role. Please try again.' }, 500)
     }
 
-    return json({ ok: true, needsEmailConfirmation: true })
+    return json({ ok: true, needsEmailConfirmation: false })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unexpected error'
     return json({ error: msg }, 500)

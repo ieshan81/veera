@@ -12,7 +12,7 @@ export type AuthContextValue = {
   signIn: (
     email: string,
     password: string,
-  ) => Promise<{ error: Error | null; isAdmin?: boolean }>
+  ) => Promise<{ error: Error | null; errorCode?: string; isAdmin?: boolean }>
   signOut: () => Promise<void>
   isAdmin: boolean
   isSuperAdmin: boolean

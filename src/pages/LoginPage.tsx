@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
 import { Link, Navigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -21,9 +22,13 @@ type Form = z.infer<typeof schema>
 export function LoginPage() {
   const { session, loading, signIn, isAdmin } = useAuth()
   const [formError, setFormError] = useState<string | null>(null)
+  const [needsEmailConfirmHelp, setNeedsEmailConfirmHelp] = useState(false)
+  const [resendFeedback, setResendFeedback] = useState<string | null>(null)
+  const [resendBusy, setResendBusy] = useState(false)
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<Form>({ resolver: zodResolver(schema) })
 
@@ -35,15 +40,26 @@ export function LoginPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null)
+    setNeedsEmailConfirmHelp(false)
+    setResendFeedback(null)
     try {
       const result = await signIn(values.email, values.password)
       if (result.error) {
-        setFormError(result.error.message)
+        const code = result.errorCode ?? ''
+        const msg = result.error.message ?? ''
+        if (code === 'email_not_confirmed' || /email not confirmed|confirm your email/i.test(msg)) {
+          setFormError(
+            'This email is not confirmed yet. Open the link Supabase sent you, or use “Resend confirmation” below.',
+          )
+          setNeedsEmailConfirmHelp(true)
+          return
+        }
+        setFormError(msg || 'Sign-in failed.')
         return
       }
       if (result.isAdmin === false) {
         setFormError(
-          'You signed in successfully, but this account does not have admin access. A super admin must add your user ID under Team, or add a row in Supabase for `user_roles` (see README bootstrap step).',
+          'You signed in, but this account has no admin role. A super admin can add your UUID under Team (profile must exist—see scripts/manual-admin-user.sql if you were created only in Auth).',
         )
         return
       }
@@ -51,6 +67,31 @@ export function LoginPage() {
       setFormError(e instanceof Error ? e.message : 'Sign-in failed. Check your connection and try again.')
     }
   })
+
+  const redirectBase =
+    (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, '') ||
+    (typeof window !== 'undefined' ? window.location.origin : '')
+
+  async function resendConfirmation() {
+    const email = getValues('email')?.trim()
+    if (!email) {
+      setResendFeedback('Enter your email above, then try again.')
+      return
+    }
+    setResendBusy(true)
+    setResendFeedback(null)
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: `${redirectBase}/login` },
+    })
+    setResendBusy(false)
+    if (error) {
+      setResendFeedback(error.message)
+      return
+    }
+    setResendFeedback('Confirmation email sent. Check your inbox and spam folder.')
+  }
 
   return (
     <div className="flex min-h-svh items-center justify-center bg-[var(--color-veera-bg)] px-4">
@@ -81,6 +122,24 @@ export function LoginPage() {
               ) : null}
             </div>
             {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+            {needsEmailConfirmHelp ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mb-2 w-full"
+                  disabled={resendBusy}
+                  onClick={() => void resendConfirmation()}
+                >
+                  {resendBusy ? 'Sending…' : 'Resend confirmation email'}
+                </Button>
+                {resendFeedback ? (
+                  <p className={resendFeedback.startsWith('Confirmation email sent') ? 'text-emerald-800' : 'text-amber-800'}>
+                    {resendFeedback}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {!configOk ? (
               <p className="text-sm text-amber-800">
                 This site is missing <code className="rounded bg-amber-100 px-1">VITE_SUPABASE_URL</code> or{' '}

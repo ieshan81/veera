@@ -493,10 +493,10 @@ using (bucket_id = 'plant-qr' and public.is_admin());
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
--- Optional: trigger so new Auth users get a profile (enable in Supabase Dashboard
--- or run once if your project allows creating triggers on auth.users):
---
--- create trigger on_auth_user_created
---   after insert on auth.users
---   for each row execute function public.handle_new_user();
+-- New Auth users get a profiles row (required for user_roles FK + Team page).
+-- Run in Supabase SQL Editor if this errors (rare): ensure handle_new_user exists above first.
 -- -----------------------------------------------------------------------------
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();

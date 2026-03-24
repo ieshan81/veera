@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      return { error: error as Error }
+      return { error: error as Error, errorCode: error.code }
     }
     if (data.session && data.user) {
       setSession(data.session)

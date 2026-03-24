@@ -45,9 +45,11 @@ The function verifies the caller’s JWT, checks `user_roles` for `admin` / `sup
 
 ## Edge Function: `admin-signup` (gated admin registration)
 
-Creates an **unconfirmed** Auth user (until the user clicks the email link), a `profiles` row, and `user_roles.role = 'admin'` **only** if two security answers pass `admin_gate_verify_answers` (service role only; answers are never exposed to the browser). After the Edge call succeeds, the app calls `auth.resend({ type: 'signup', … })` so Supabase sends the confirmation email.
+Creates a **confirmed** Auth user (so they can sign in immediately), a `profiles` row, and `user_roles.role = 'admin'` **only** if two security answers pass `admin_gate_verify_answers` (service role only; answers are never exposed to the browser). To require email confirmation instead, change the Edge function to `email_confirm: false` and keep **Confirm email** on in the Supabase dashboard (with **Site URL** / **Redirect URLs** and SMTP).
 
-**Supabase dashboard:** Authentication → **Providers** → **Email** → enable **Confirm email**. Under **URL configuration**, set **Site URL** to your production app (e.g. Netlify URL) and add **Redirect URLs** for production and `http://localhost:5173/login` (or your dev port). Configure **SMTP** or use Supabase’s built-in mail so messages are delivered.
+**Manual users (Dashboard invite / SQL):** use `scripts/manual-admin-user.sql` after the user exists in Auth. With `schema.sql` applied fully, the `on_auth_user_created` trigger creates a `profiles` row for every new Auth user so **Team** can add roles without extra SQL.
+
+**Unconfirmed accounts:** the login page offers **Resend confirmation email** when Supabase returns `email_not_confirmed`.
 
 ```bash
 supabase functions deploy admin-signup
