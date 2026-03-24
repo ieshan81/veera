@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Leaf, RefreshCw } from 'lucide-react'
 import { useAuth } from '@/auth/useAuth'
+import { requestAdminSignup } from '@/lib/adminSignupRequest'
 import { supabase, hasSupabaseConfig } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -93,31 +94,18 @@ export function AdminSignupPage() {
       return
     }
     try {
-      const { data, error } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>('admin-signup', {
-        body: {
-          email: values.email.trim().toLowerCase(),
-          password: values.password,
-          question_ids: [questions[0].id, questions[1].id],
-          answers: [values.answer1, values.answer2],
-        },
+      const result = await requestAdminSignup({
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
+        question_ids: [questions[0].id, questions[1].id],
+        answers: [values.answer1, values.answer2],
       })
-      if (error) {
-        const msg =
-          (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) ||
-          error.message
-        setFormError(msg)
+      if (!result.ok) {
+        setFormError(result.message)
         return
       }
-      if (data?.error) {
-        setFormError(data.error)
-        return
-      }
-      if (data?.ok) {
-        setSuccess(true)
-        reset()
-        return
-      }
-      setFormError('Something went wrong. Try again.')
+      setSuccess(true)
+      reset()
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Signup failed.')
     }

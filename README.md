@@ -57,6 +57,16 @@ Uses the same auto-provided secrets as other functions (`SUPABASE_URL`, `SUPABAS
 
 **Promote to `super_admin`:** still done with SQL or **Team** (existing super admins only).
 
+If signup shows **“Failed to send a request to the Edge Function”** (or a 404 message after our update), the function is **not deployed** to the same Supabase project as `VITE_SUPABASE_URL`. Deploy it:
+
+```bash
+supabase login
+supabase link --project-ref <your-project-ref>
+supabase functions deploy admin-signup
+```
+
+Ref is in the Supabase dashboard URL: `https://supabase.com/dashboard/project/<ref>`. After deploying, try `/signup` again (no Netlify redeploy required for the function itself).
+
 ## Local development
 
 ```bash
