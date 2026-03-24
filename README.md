@@ -45,7 +45,9 @@ The function verifies the caller’s JWT, checks `user_roles` for `admin` / `sup
 
 ## Edge Function: `admin-signup` (gated admin registration)
 
-Creates a confirmed Auth user, `profiles` row, and `user_roles.role = 'admin'` **only** if two security answers pass `admin_gate_verify_answers` (service role only; answers are never exposed to the browser).
+Creates an **unconfirmed** Auth user (until the user clicks the email link), a `profiles` row, and `user_roles.role = 'admin'` **only** if two security answers pass `admin_gate_verify_answers` (service role only; answers are never exposed to the browser). After the Edge call succeeds, the app calls `auth.resend({ type: 'signup', … })` so Supabase sends the confirmation email.
+
+**Supabase dashboard:** Authentication → **Providers** → **Email** → enable **Confirm email**. Under **URL configuration**, set **Site URL** to your production app (e.g. Netlify URL) and add **Redirect URLs** for production and `http://localhost:5173/login` (or your dev port). Configure **SMTP** or use Supabase’s built-in mail so messages are delivered.
 
 ```bash
 supabase functions deploy admin-signup

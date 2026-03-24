@@ -30,6 +30,7 @@ export function AdminSignupPage() {
   const [loadingQuestions, setLoadingQuestions] = useState(true)
   const [formError, setFormError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [emailResendWarning, setEmailResendWarning] = useState<string | null>(null)
 
   const configOk = hasSupabaseConfig()
 
@@ -104,6 +105,19 @@ export function AdminSignupPage() {
         setFormError(result.message)
         return
       }
+      const email = values.email.trim().toLowerCase()
+      const redirectBase =
+        (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, '') || window.location.origin
+      const { error: resendErr } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo: `${redirectBase}/login` },
+      })
+      setEmailResendWarning(
+        resendErr
+          ? `${resendErr.message} The account was still created—check Supabase Auth email/SMTP settings, or resend confirmation from the dashboard.`
+          : null,
+      )
       setSuccess(true)
       reset()
     } catch (e) {
@@ -136,12 +150,23 @@ export function AdminSignupPage() {
           ) : null}
 
           {success ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              <p className="font-medium">Account created</p>
-              <p className="mt-1">You can sign in now with your email and password.</p>
-              <Button asChild className="mt-4 w-full">
-                <Link to="/login">Go to sign in</Link>
-              </Button>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                <p className="font-medium">Account created</p>
+                {emailResendWarning ? (
+                  <p className="mt-1 text-amber-900">
+                    We could not send the confirmation email automatically. {emailResendWarning}
+                  </p>
+                ) : (
+                  <p className="mt-1">
+                    Check your inbox for a confirmation link from Supabase. After you confirm, sign in with your email
+                    and password.
+                  </p>
+                )}
+                <Button asChild className="mt-4 w-full">
+                  <Link to="/login">Go to sign in</Link>
+                </Button>
+              </div>
             </div>
           ) : null}
 

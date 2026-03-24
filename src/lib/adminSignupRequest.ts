@@ -6,7 +6,7 @@ export type AdminSignupBody = {
 }
 
 export type AdminSignupResult =
-  | { ok: true }
+  | { ok: true; needsEmailConfirmation?: boolean }
   | { ok: false; message: string }
 
 /**
@@ -46,7 +46,7 @@ export async function requestAdminSignup(body: AdminSignupBody): Promise<AdminSi
   }
 
   const text = await res.text()
-  let json: { ok?: boolean; error?: string } = {}
+  let json: { ok?: boolean; error?: string; needsEmailConfirmation?: boolean } = {}
   if (text) {
     try {
       json = JSON.parse(text) as { ok?: boolean; error?: string }
@@ -82,7 +82,7 @@ export async function requestAdminSignup(body: AdminSignupBody): Promise<AdminSi
     return { ok: false, message: json.error }
   }
   if (json.ok === true) {
-    return { ok: true }
+    return { ok: true, needsEmailConfirmation: json.needsEmailConfirmation === true }
   }
 
   return { ok: false, message: 'Unexpected response from admin-signup. Check Supabase Edge Function logs.' }
