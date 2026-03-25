@@ -1,19 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabaseClient'
+import { requestPlantQrUpsert } from '@/lib/plantQrEdgeRequest'
+import type { QrMode } from '@/lib/plantQrEdgeRequest'
 
-export type QrMode = 'ensure_primary' | 'regenerate'
+export type { QrMode }
 
 export function usePlantQrMutation() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ plantId, mode }: { plantId: string; mode: QrMode }) => {
-      const { data, error } = await supabase.functions.invoke<{ ok?: boolean; error?: string; code?: string }>(
-        'plant-qr-upsert',
-        { body: { plant_id: plantId, mode } },
-      )
-      if (error) throw new Error(error.message)
-      if (data && 'error' in data && data.error) throw new Error(data.error as string)
-      return data
+      const result = await requestPlantQrUpsert(plantId, mode)
+      if (!result.ok) {
+        throw new Error(result.message)
+      }
+      return result.data
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['plants'] })

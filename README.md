@@ -43,6 +43,8 @@ Required function secrets (usually auto-provided by Supabase): `SUPABASE_URL`, `
 
 The function verifies the caller’s JWT, checks `user_roles` for `admin` / `super_admin`, then creates or regenerates the primary QR PNG in Storage and updates `plant_qr_codes`.
 
+**If QR / import flows show a vague “Failed to send a request to the Edge Function” (or our clearer message):** the app calls `https://<project>.supabase.co/functions/v1/plant-qr-upsert`. Confirm the function is **deployed** to the **same** project as `VITE_SUPABASE_URL`, redeploy Netlify after changing env vars (Vite bakes `VITE_*` at build time), and try in another browser without extensions blocking cross-origin requests. This repo uses **`VITE_SUPABASE_URL`** and **`VITE_SUPABASE_ANON_KEY`** — not Next.js `NEXT_PUBLIC_*` names.
+
 ## Edge Function: `admin-signup` (gated admin registration)
 
 Creates a **confirmed** Auth user (so they can sign in immediately), a `profiles` row, and `user_roles.role = 'admin'` **only** if two security answers pass `admin_gate_verify_answers` (service role only; answers are never exposed to the browser). To require email confirmation instead, change the Edge function to `email_confirm: false` and keep **Confirm email** on in the Supabase dashboard (with **Site URL** / **Redirect URLs** and SMTP).
