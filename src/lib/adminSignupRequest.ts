@@ -1,3 +1,5 @@
+import { getEdgeFunctionUrl } from '@/lib/edgeFunctionUrl'
+
 export type AdminSignupBody = {
   email: string
   password: string
@@ -14,13 +16,15 @@ export type AdminSignupResult =
  * supabase.functions.invoke, which often only reports "Failed to send a request…").
  */
 export async function requestAdminSignup(body: AdminSignupBody): Promise<AdminSignupResult> {
-  const base = import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, '')
   const anon = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
-  if (!base || !anon) {
-    return { ok: false, message: 'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.' }
+  if (!anon) {
+    return { ok: false, message: 'Missing VITE_SUPABASE_ANON_KEY.' }
   }
 
-  const url = `${base}/functions/v1/admin-signup`
+  const url = getEdgeFunctionUrl('admin-signup')
+  if (!url) {
+    return { ok: false, message: 'Missing VITE_SUPABASE_URL.' }
+  }
 
   let res: Response
   try {

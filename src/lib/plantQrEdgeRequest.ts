@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { getEdgeFunctionUrl } from '@/lib/edgeFunctionUrl'
 
 export type QrMode = 'ensure_primary' | 'regenerate'
 
@@ -24,7 +25,10 @@ export async function requestPlantQrUpsert(plantId: string, mode: QrMode): Promi
     return { ok: false, message: 'You are not signed in. Refresh the page and try again.' }
   }
 
-  const url = `${base}/functions/v1/plant-qr-upsert`
+  const url = getEdgeFunctionUrl('plant-qr-upsert')
+  if (!url) {
+    return { ok: false, message: 'Missing VITE_SUPABASE_URL.' }
+  }
 
   let res: Response
   try {

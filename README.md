@@ -43,7 +43,9 @@ Required function secrets (usually auto-provided by Supabase): `SUPABASE_URL`, `
 
 The function verifies the caller’s JWT, checks `user_roles` for `admin` / `super_admin`, then creates or regenerates the primary QR PNG in Storage and updates `plant_qr_codes`.
 
-**If QR / import flows show a vague “Failed to send a request to the Edge Function” (or our clearer message):** the app calls `https://<project>.supabase.co/functions/v1/plant-qr-upsert`. Confirm the function is **deployed** to the **same** project as `VITE_SUPABASE_URL`, redeploy Netlify after changing env vars (Vite bakes `VITE_*` at build time), and try in another browser without extensions blocking cross-origin requests. This repo uses **`VITE_SUPABASE_URL`** and **`VITE_SUPABASE_ANON_KEY`** — not Next.js `NEXT_PUBLIC_*` names.
+**Edge calls from Netlify:** `netlify.toml` sets `VITE_NETLIFY_EDGE_PROXY=true` so the browser calls `/.netlify/functions/supabase-edge` (same origin); that serverless function forwards to `https://<project>.supabase.co/functions/v1/...`. This avoids many “Failed to fetch” errors to `*.supabase.co`. Local `npm run dev` still calls Supabase directly (no proxy).
+
+**If QR / import still fails:** deploy **`plant-qr-upsert`** to the same Supabase project as `VITE_SUPABASE_URL` (`supabase functions deploy plant-qr-upsert`). Redeploy Netlify after changing `VITE_*` env vars. Confirm **Netlify → Functions** shows `supabase-edge` after deploy. This app uses **`VITE_SUPABASE_URL`** and **`VITE_SUPABASE_ANON_KEY`** (not Next.js `NEXT_PUBLIC_*` names).
 
 ## Edge Function: `admin-signup` (gated admin registration)
 

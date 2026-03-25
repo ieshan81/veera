@@ -116,7 +116,7 @@ export function PlantsPage() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 lg:col-span-2">
             <Label htmlFor="search">Search</Label>
             <div className="relative mt-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -159,15 +159,18 @@ export function PlantsPage() {
               ))}
             </select>
           </div>
-          <div className="flex flex-col gap-2 md:col-span-2 lg:col-span-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={missingQr} onChange={(e) => setMissingQr(e.target.checked)} />
-              Missing QR (not ready)
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={missingPhoto} onChange={(e) => setMissingPhoto(e.target.checked)} />
-              Missing cover photo
-            </label>
+          <div className="flex flex-col gap-3 md:col-span-2 lg:col-span-4 lg:flex-row lg:items-center lg:gap-8">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick filters</span>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" checked={missingQr} onChange={(e) => setMissingQr(e.target.checked)} />
+                Missing QR (not ready)
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" checked={missingPhoto} onChange={(e) => setMissingPhoto(e.target.checked)} />
+                Missing cover photo
+              </label>
+            </div>
           </div>
         </CardContent>
       </Card>

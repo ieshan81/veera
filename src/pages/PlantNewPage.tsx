@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -31,6 +31,8 @@ type Form = z.infer<typeof schema>
 
 export function PlantNewPage() {
   const navigate = useNavigate()
+  const coverInputRef = useRef<HTMLInputElement>(null)
+  const [coverFile, setCoverFile] = useState<File | null>(null)
   const [banner, setBanner] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const qrMutation = usePlantQrMutation()
 
@@ -57,6 +59,16 @@ export function PlantNewPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     setBanner(null)
+    if (!coverFile) {
+      setBanner({ type: 'err', text: 'Choose a cover photo (required).' })
+      coverInputRef.current?.focus()
+      return
+    }
+    if (!coverFile.type.startsWith('image/')) {
+      setBanner({ type: 'err', text: 'Cover must be an image file.' })
+      return
+    }
+
     const { data, error } = await supabase
       .from('plants')
       .insert({
@@ -77,8 +89,33 @@ export function PlantNewPage() {
       return
     }
 
+    const plantId = data.id
+    const ext = coverFile.name.split('.').pop() || 'jpg'
+    const storagePath = `${plantId}/${crypto.randomUUID()}.${ext}`
+    const { error: upErr } = await supabase.storage.from('plant-photos').upload(storagePath, coverFile, {
+      upsert: false,
+      contentType: coverFile.type || 'image/jpeg',
+    })
+    if (upErr) {
+      await supabase.from('plants').delete().eq('id', plantId)
+      setBanner({ type: 'err', text: upErr.message || 'Could not upload cover photo.' })
+      return
+    }
+    const { error: phErr } = await supabase.from('plant_catalog_photos').insert({
+      plant_id: plantId,
+      storage_path: storagePath,
+      sort_order: 0,
+      is_cover: true,
+    })
+    if (phErr) {
+      await supabase.storage.from('plant-photos').remove([storagePath])
+      await supabase.from('plants').delete().eq('id', plantId)
+      setBanner({ type: 'err', text: friendlyDbError(phErr) })
+      return
+    }
+
     try {
-      await qrMutation.mutateAsync({ plantId: data.id, mode: 'ensure_primary' })
+      await qrMutation.mutateAsync({ plantId, mode: 'ensure_primary' })
     } catch (e) {
       setBanner({
         type: 'err',
@@ -87,12 +124,12 @@ export function PlantNewPage() {
             ? `Plant saved, but QR failed: ${e.message}. You can retry from the plant page.`
             : 'Plant saved; QR generation failed — retry from the plant page.',
       })
-      navigate(`/plants/${data.id}`)
+      navigate(`/plants/${plantId}`)
       return
     }
 
     setBanner({ type: 'ok', text: 'Plant created and QR generated.' })
-    navigate(`/plants/${data.id}`)
+    navigate(`/plants/${plantId}`)
   })
 
   return (
@@ -102,7 +139,9 @@ export function PlantNewPage() {
           <Link to="/plants">← Back to plants</Link>
         </Button>
         <h1 className="text-2xl font-semibold text-slate-900">New plant</h1>
-        <p className="text-sm text-slate-600">Core fields first; tags and sections on the next screen.</p>
+        <p className="text-sm text-slate-600">
+          A cover photo is required. Tags and extra sections are on the plant page after save.
+        </p>
       </div>
 
       <Card>
@@ -150,6 +189,19 @@ export function PlantNewPage() {
             <div>
               <Label htmlFor="internal_notes">Internal notes</Label>
               <Textarea id="internal_notes" {...register('internal_notes')} />
+            </div>
+
+            <div>
+              <Label htmlFor="cover_photo">Cover photo</Label>
+              <Input
+                id="cover_photo"
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                className="cursor-pointer"
+                onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+              />
+              <p className="mt-1 text-xs text-slate-500">Required — shown as the main catalog image.</p>
             </div>
 
             {banner?.type === 'err' ? <p className="text-sm text-red-600">{banner.text}</p> : null}

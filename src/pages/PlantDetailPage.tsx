@@ -142,6 +142,23 @@ export function PlantDetailPage() {
 
   const saveCore = handleSubmit(async (values) => {
     setMsg(null)
+    const { data: coverRow, error: coverErr } = await supabase
+      .from('plant_catalog_photos')
+      .select('id')
+      .eq('plant_id', plantId)
+      .eq('is_cover', true)
+      .maybeSingle()
+    if (coverErr) {
+      setMsg({ type: 'err', text: friendlyDbError(coverErr) })
+      return
+    }
+    if (!coverRow) {
+      setMsg({
+        type: 'err',
+        text: 'Add a cover photo in the Photos section below — it is required before saving plant details.',
+      })
+      return
+    }
     const { error } = await supabase
       .from('plants')
       .update({
