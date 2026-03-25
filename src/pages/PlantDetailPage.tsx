@@ -586,7 +586,7 @@ export function PlantDetailPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {!primaryQr ? (
-            <p className="text-sm text-amber-800">No primary QR yet. Generate one below.</p>
+            <p className="text-sm text-amber-800">No primary QR yet. Use Generate QR below.</p>
           ) : (
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
               <div className="rounded-lg border border-[var(--color-veera-border)] bg-white p-4">
@@ -612,7 +612,14 @@ export function PlantDetailPage() {
                   {primaryQr.qr_value}
                 </div>
                 {primaryQr.last_error ? (
-                  <div className="rounded-md bg-red-50 p-2 text-red-800">{primaryQr.last_error}</div>
+                  <div className="rounded-md bg-red-50 p-2 text-sm text-red-800">
+                    <p className="font-medium">Last error</p>
+                    <p className="mt-1">{primaryQr.last_error}</p>
+                    <p className="mt-2 text-red-900/90">
+                      Use <strong>Retry / ensure QR</strong> to try again, or <strong>Regenerate QR</strong> for a new
+                      code and image.
+                    </p>
+                  </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2 pt-2">
                   {signedQrUrl.data ? (

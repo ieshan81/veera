@@ -121,8 +121,8 @@ export function PlantNewPage() {
         type: 'err',
         text:
           e instanceof Error
-            ? `Plant saved, but QR failed: ${e.message}. You can retry from the plant page.`
-            : 'Plant saved; QR generation failed — retry from the plant page.',
+            ? `Plant saved, but QR could not be generated: ${e.message} Open the plant page and use Retry / ensure QR.`
+            : 'Plant saved; QR generation failed — open the plant page and use Retry / ensure QR.',
       })
       navigate(`/plants/${plantId}`)
       return

@@ -32,20 +32,55 @@ Clean admin dashboard for managing plants, tags, flexible content sections, phot
 
 ## Edge Function: `plant-qr-upsert`
 
-From the repo root (with [Supabase CLI](https://supabase.com/docs/guides/cli) linked to your project):
+**Source folder in this repo:** `supabase/functions/plant-qr-upsert/` (entry `index.ts`). The deployed name must be exactly **`plant-qr-upsert`**.
 
-```bash
-supabase secrets set QR_PUBLIC_BASE_URL=https://your-app-domain.com/p
-supabase functions deploy plant-qr-upsert
-```
+### Deployment checklist
 
-Required function secrets (usually auto-provided by Supabase): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Set `QR_PUBLIC_BASE_URL` to the URL prefix encoded in each QR (must match what the mobile app will resolve).
+1. **Confirm project ref matches the app** — Your Netlify / `.env` `VITE_SUPABASE_URL` must be `https://<PROJECT_REF>.supabase.co` for the **same** project you deploy functions to. Mismatch is the most common cause of **404** (“function not deployed”).
+2. **Install CLI and link** (from repo root):
 
-The function verifies the caller’s JWT, checks `user_roles` for `admin` / `super_admin`, then creates or regenerates the primary QR PNG in Storage and updates `plant_qr_codes`.
+   ```bash
+   supabase login
+   supabase link --project-ref <PROJECT_REF>
+   ```
 
-**Edge calls from Netlify:** `netlify.toml` sets `VITE_NETLIFY_EDGE_PROXY=true` so the browser calls `/.netlify/functions/supabase-edge` (same origin); that serverless function forwards to `https://<project>.supabase.co/functions/v1/...`. This avoids many “Failed to fetch” errors to `*.supabase.co`. Local `npm run dev` still calls Supabase directly (no proxy).
+   `PROJECT_REF` is in the dashboard URL: `https://supabase.com/dashboard/project/<PROJECT_REF>`.
 
-**If QR / import still fails:** deploy **`plant-qr-upsert`** to the same Supabase project as `VITE_SUPABASE_URL` (`supabase functions deploy plant-qr-upsert`). Redeploy Netlify after changing `VITE_*` env vars. Confirm **Netlify → Functions** shows `supabase-edge` after deploy. This app uses **`VITE_SUPABASE_URL`** and **`VITE_SUPABASE_ANON_KEY`** (not Next.js `NEXT_PUBLIC_*` names).
+3. **Set QR URL prefix** (encoded inside each QR; must match how the mobile app resolves plants):
+
+   ```bash
+   supabase secrets set QR_PUBLIC_BASE_URL=https://your-public-domain.com/p
+   ```
+
+4. **Deploy the function:**
+
+   ```bash
+   supabase functions deploy plant-qr-upsert
+   ```
+
+5. **(Optional)** Deploy gated signup too: `supabase functions deploy admin-signup` (same project).
+
+6. **Verify in dashboard:** Supabase → **Edge Functions** → `plant-qr-upsert` appears. Open **Logs** after triggering QR from the admin UI.
+
+7. **Test with curl** (replace placeholders; get `ACCESS_TOKEN` from browser devtools → Application → Local Storage for Supabase session, or sign in via API):
+
+   ```bash
+   curl -sS -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/plant-qr-upsert" \
+     -H "Authorization: Bearer <ACCESS_TOKEN>" \
+     -H "apikey: <ANON_KEY>" \
+     -H "Content-Type: application/json" \
+     -d '{"plant_id":"<EXISTING_PLANT_UUID>","mode":"ensure_primary"}'
+   ```
+
+   Expect **200** and JSON with `ok: true` and `plant_id`, `qr_id`, `qr_token`, `qr_value`, etc., or a clear `error` + `code`.
+
+**Secrets:** Hosted Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into Edge Functions automatically. You still set `QR_PUBLIC_BASE_URL` as above.
+
+**Behavior:** The function validates the caller’s JWT, checks `user_roles` for `admin` / `super_admin`, loads the plant, generates a PNG QR into Storage bucket **`plant-qr`** at `plants/<plant_id>/<token>.png`, and upserts **`plant_qr_codes`** (`pending` → `ready` or `failed`).
+
+**Netlify proxy:** [`netlify.toml`](./netlify.toml) sets `VITE_NETLIFY_EDGE_PROXY=true` so production builds call `/.netlify/functions/supabase-edge?fn=plant-qr-upsert` (same origin). That function forwards to `https://<project>.supabase.co/functions/v1/<fn>` with the same `Authorization` and JSON body. Ensure **Netlify → Functions** lists **`supabase-edge`**. Local `npm run dev` calls Supabase **directly** (no proxy).
+
+**If you still see 404:** The function is missing on the project behind `VITE_SUPABASE_URL`, or the URL/key point at a different project. Redeploy with the steps above using the correct `project-ref`.
 
 ## Edge Function: `admin-signup` (gated admin registration)
 

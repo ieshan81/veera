@@ -13,6 +13,18 @@ function json(body: unknown, status = 200) {
   })
 }
 
+type SuccessPayload = {
+  ok: true
+  plant_id: string
+  qr_id: string
+  qr_token: string
+  qr_value: string
+  qr_image_path: string | null
+  is_primary: boolean
+  status: 'ready' | 'pending'
+  reused?: boolean
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -25,12 +37,12 @@ Deno.serve(async (req) => {
     const qrBase = Deno.env.get('QR_PUBLIC_BASE_URL') ?? 'https://app.veera.com/p'
 
     if (!supabaseUrl || !anonKey || !serviceKey) {
-      return json({ error: 'Server misconfigured' }, 500)
+      return json({ error: 'Server misconfigured', code: 'SERVER_CONFIG' }, 500)
     }
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return json({ error: 'Missing authorization' }, 401)
+      return json({ error: 'Missing authorization', code: 'UNAUTHORIZED' }, 401)
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -41,7 +53,7 @@ Deno.serve(async (req) => {
       error: userErr,
     } = await userClient.auth.getUser()
     if (userErr || !user) {
-      return json({ error: 'Unauthorized' }, 401)
+      return json({ error: 'Invalid or expired session', code: 'UNAUTHORIZED' }, 401)
     }
 
     const admin = createClient(supabaseUrl, serviceKey)
@@ -50,23 +62,29 @@ Deno.serve(async (req) => {
       .select('role')
       .eq('user_id', user.id)
     if (roleErr) {
-      return json({ error: roleErr.message }, 500)
+      return json({ error: roleErr.message, code: 'ROLE_CHECK' }, 500)
     }
     const allowed = (roles ?? []).some((r) => r.role === 'admin' || r.role === 'super_admin')
     if (!allowed) {
-      return json({ error: 'Forbidden' }, 403)
+      return json(
+        {
+          error: 'Admin or super_admin role required to generate QR codes',
+          code: 'FORBIDDEN',
+        },
+        403,
+      )
     }
 
     const body = (await req.json()) as { plant_id?: string; mode?: string }
     const plantId = body.plant_id
     const mode = body.mode === 'regenerate' ? 'regenerate' : 'ensure_primary'
     if (!plantId) {
-      return json({ error: 'plant_id required' }, 400)
+      return json({ error: 'plant_id required', code: 'BAD_REQUEST' }, 400)
     }
 
     const { data: plant, error: plantErr } = await admin.from('plants').select('id, slug').eq('id', plantId).single()
     if (plantErr || !plant) {
-      return json({ error: 'Plant not found' }, 404)
+      return json({ error: 'Plant not found', code: 'PLANT_NOT_FOUND' }, 404)
     }
 
     if (mode === 'ensure_primary') {
@@ -79,7 +97,18 @@ Deno.serve(async (req) => {
         .maybeSingle()
 
       if (existing && existing.status === 'ready' && existing.qr_image_path) {
-        return json({ ok: true, reused: true, qr_id: existing.id })
+        const success: SuccessPayload = {
+          ok: true,
+          reused: true,
+          plant_id: plantId,
+          qr_id: existing.id,
+          qr_token: existing.qr_token,
+          qr_value: existing.qr_value,
+          qr_image_path: existing.qr_image_path,
+          is_primary: true,
+          status: 'ready',
+        }
+        return json(success)
       }
 
       await admin.from('plant_qr_codes').update({ is_primary: false }).eq('plant_id', plantId).eq('is_primary', true)
@@ -112,7 +141,14 @@ Deno.serve(async (req) => {
       .single()
 
     if (insErr) {
-      return json({ error: insErr.message, code: insErr.code }, 500)
+      return json(
+        {
+          error: insErr.message,
+          code: 'DB_UPSERT',
+          details: insErr.code,
+        },
+        500,
+      )
     }
 
     const qrRowId = inserted!.id as string
@@ -132,7 +168,13 @@ Deno.serve(async (req) => {
           .from('plant_qr_codes')
           .update({ status: 'failed', last_error: `Storage: ${upErr.message}` })
           .eq('id', qrRowId)
-        return json({ error: upErr.message }, 500)
+        return json(
+          {
+            error: upErr.message,
+            code: 'STORAGE_UPLOAD',
+          },
+          500,
+        )
       }
 
       const { error: upRow } = await admin
@@ -141,17 +183,27 @@ Deno.serve(async (req) => {
         .eq('id', qrRowId)
 
       if (upRow) {
-        return json({ error: upRow.message }, 500)
+        return json({ error: upRow.message, code: 'DB_UPSERT', details: upRow.code }, 500)
       }
 
-      return json({ ok: true, qr_id: qrRowId, path: objectPath })
+      const success: SuccessPayload = {
+        ok: true,
+        plant_id: plantId,
+        qr_id: qrRowId,
+        qr_token: qrToken,
+        qr_value: qrValue,
+        qr_image_path: objectPath,
+        is_primary: true,
+        status: 'ready',
+      }
+      return json(success)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'QR render failed'
       await admin.from('plant_qr_codes').update({ status: 'failed', last_error: msg }).eq('id', qrRowId)
-      return json({ error: msg }, 500)
+      return json({ error: msg, code: 'QR_RENDER' }, 500)
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unexpected error'
-    return json({ error: msg }, 500)
+    return json({ error: msg, code: 'UNEXPECTED' }, 500)
   }
 })

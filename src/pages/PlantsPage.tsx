@@ -37,6 +37,7 @@ async function fetchPlantsData() {
   const { data: assignments } = await supabase.from('plant_tag_assignments').select('plant_id, tag_id')
 
   const qrReady = new Set((qrs ?? []).filter((q) => q.status === 'ready').map((q) => q.plant_id))
+  const qrFailed = new Set((qrs ?? []).filter((q) => q.status === 'failed').map((q) => q.plant_id))
   const hasQrRow = new Set((qrs ?? []).map((q) => q.plant_id))
   const coverSet = new Set((covers ?? []).map((c) => c.plant_id))
   const tagsByPlant = new Map<string, string[]>()
@@ -46,13 +47,14 @@ async function fetchPlantsData() {
     tagsByPlant.set(a.plant_id, list)
   }
 
-  return { plants: (plants ?? []) as PlantRow[], qrReady, hasQrRow, coverSet, tagsByPlant }
+  return { plants: (plants ?? []) as PlantRow[], qrReady, qrFailed, hasQrRow, coverSet, tagsByPlant }
 }
 
 export function PlantsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | PlantStatus>('all')
   const [missingQr, setMissingQr] = useState(false)
+  const [qrFailedOnly, setQrFailedOnly] = useState(false)
   const [missingPhoto, setMissingPhoto] = useState(false)
   const [tagFilter, setTagFilter] = useState<string>('')
 
@@ -88,6 +90,9 @@ export function PlantsPage() {
     if (missingQr) {
       rows = rows.filter((p) => !data.qrReady.has(p.id))
     }
+    if (qrFailedOnly) {
+      rows = rows.filter((p) => data.qrFailed.has(p.id))
+    }
     if (missingPhoto) {
       rows = rows.filter((p) => !data.coverSet.has(p.id))
     }
@@ -95,7 +100,7 @@ export function PlantsPage() {
       rows = rows.filter((p) => (data.tagsByPlant.get(p.id) ?? []).includes(tagFilter))
     }
     return rows
-  }, [data, search, statusFilter, missingQr, missingPhoto, tagFilter])
+  }, [data, search, statusFilter, missingQr, qrFailedOnly, missingPhoto, tagFilter])
 
   if (isLoading) return <p className="text-slate-600">Loading plants…</p>
 
@@ -167,6 +172,10 @@ export function PlantsPage() {
                 Missing QR (not ready)
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" checked={qrFailedOnly} onChange={(e) => setQrFailedOnly(e.target.checked)} />
+                QR generation failed
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
                 <input type="checkbox" checked={missingPhoto} onChange={(e) => setMissingPhoto(e.target.checked)} />
                 Missing cover photo
               </label>
@@ -193,6 +202,7 @@ export function PlantsPage() {
               <tbody className="divide-y divide-[var(--color-veera-border)]">
                 {filtered.map((p) => {
                   const qrOk = data!.qrReady.has(p.id)
+                  const qrFail = data!.qrFailed.has(p.id)
                   const photoOk = data!.coverSet.has(p.id)
                   return (
                     <tr key={p.id} className="bg-white/80 hover:bg-stone-50/80">
@@ -204,8 +214,10 @@ export function PlantsPage() {
                       <td className="px-4 py-3">
                         {qrOk ? (
                           <Badge variant="success">Ready</Badge>
+                        ) : qrFail ? (
+                          <Badge variant="danger">Failed</Badge>
                         ) : data!.hasQrRow.has(p.id) ? (
-                          <Badge variant="warning">Pending / failed</Badge>
+                          <Badge variant="warning">Pending</Badge>
                         ) : (
                           <Badge variant="danger">None</Badge>
                         )}

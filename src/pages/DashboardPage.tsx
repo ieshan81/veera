@@ -36,13 +36,14 @@ async function fetchDashboardStats() {
     const q = qrByPlant.get(p.id)
     return !q || q.status !== 'ready'
   }).length
+  const qrFailed = (plants ?? []).filter((p) => qrByPlant.get(p.id)?.status === 'failed').length
   const missingPhoto = (plants ?? []).filter((p) => !coverSet.has(p.id)).length
 
   const recent = [...(plants ?? [])]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 8)
 
-  return { total, active, missingQr, missingPhoto, recent }
+  return { total, active, missingQr, qrFailed, missingPhoto, recent }
 }
 
 export function DashboardPage() {
@@ -93,7 +94,7 @@ export function DashboardPage() {
         <p className="mt-1 text-sm text-slate-600">Operational overview for your plant catalog.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardContent className="pt-5">
             <div className="text-sm font-medium text-slate-500">Total plants</div>
@@ -113,6 +114,16 @@ export function DashboardPage() {
               Missing QR
             </div>
             <div className="mt-1 text-3xl font-semibold text-amber-800">{stats.missingQr}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+              <AlertCircle className="h-4 w-4" />
+              QR failed
+            </div>
+            <div className="mt-1 text-3xl font-semibold text-red-800">{stats.qrFailed}</div>
+            <p className="mt-1 text-xs text-slate-500">Open plant → Retry QR</p>
           </CardContent>
         </Card>
         <Card>

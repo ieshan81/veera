@@ -1,10 +1,23 @@
 import { supabase } from '@/lib/supabaseClient'
 import { getEdgeFunctionUrl } from '@/lib/edgeFunctionUrl'
+import { friendlyQrErrorMessage, logQrErrorDev } from '@/lib/qrErrors'
 
 export type QrMode = 'ensure_primary' | 'regenerate'
 
+export type PlantQrSuccessPayload = {
+  ok: true
+  plant_id: string
+  qr_id: string
+  qr_token: string
+  qr_value: string
+  qr_image_path: string | null
+  is_primary: boolean
+  status: 'ready' | 'pending'
+  reused?: boolean
+}
+
 export type PlantQrUpsertResult =
-  | { ok: true; data?: unknown }
+  | { ok: true; data: PlantQrSuccessPayload }
   | { ok: false; message: string }
 
 /**
@@ -43,52 +56,61 @@ export async function requestPlantQrUpsert(plantId: string, mode: QrMode): Promi
     })
   } catch (err) {
     const hint =
-      'Browser could not reach Supabase. Check VPN/ad-block, Wi‑Fi, and that VITE_SUPABASE_URL matches your project (Settings → API).'
+      'Could not reach the QR service. Check your network, VPN, or ad-blocker, and try again.'
     if (err instanceof TypeError) {
       return { ok: false, message: `${hint} (${err.message})` }
     }
     return {
       ok: false,
-      message: err instanceof Error ? err.message : 'Network error while contacting Supabase.',
+      message: err instanceof Error ? err.message : 'Network error while contacting the QR service.',
     }
   }
 
   const text = await res.text()
-  let json: { ok?: boolean; error?: string; code?: string } = {}
+  let json: PlantQrSuccessPayload & { error?: string; code?: string; hint?: string } = {} as PlantQrSuccessPayload & {
+    error?: string
+    code?: string
+    hint?: string
+  }
   if (text) {
     try {
-      json = JSON.parse(text) as { ok?: boolean; error?: string; code?: string }
+      json = JSON.parse(text) as typeof json
     } catch {
-      json = { error: text.slice(0, 280) }
+      json = { error: text.slice(0, 280) } as typeof json
     }
   }
 
-  if (res.status === 404) {
-    return {
-      ok: false,
-      message:
-        'plant-qr-upsert is not deployed (404). Run: supabase functions deploy plant-qr-upsert (same project as VITE_SUPABASE_URL).',
-    }
-  }
-
-  if (res.status === 401 || res.status === 403) {
-    return {
-      ok: false,
-      message:
-        'Supabase rejected the request. Sign out and sign in again, and confirm VITE_SUPABASE_ANON_KEY is the anon key from Settings → API.',
-    }
-  }
+  logQrErrorDev(text, json)
 
   if (!res.ok) {
+    const message = friendlyQrErrorMessage({
+      httpStatus: res.status,
+      bodyText: text,
+      parsed: { error: json.error, code: json.code, hint: json.hint },
+    })
+    return { ok: false, message }
+  }
+
+  if (json.ok === true && json.qr_id) {
+    if (json.plant_id) {
+      return { ok: true, data: json as PlantQrSuccessPayload }
+    }
+    const legacy = json as { ok: true; qr_id: string; path?: string; reused?: boolean }
     return {
-      ok: false,
-      message: json.error || `Request failed with status ${res.status}.`,
+      ok: true,
+      data: {
+        ok: true,
+        plant_id: plantId,
+        qr_id: legacy.qr_id,
+        qr_token: '',
+        qr_value: '',
+        qr_image_path: legacy.path ?? null,
+        is_primary: true,
+        status: 'ready',
+        reused: legacy.reused,
+      },
     }
   }
 
-  if (json.error) {
-    return { ok: false, message: json.error }
-  }
-
-  return { ok: true, data: json }
+  return { ok: false, message: 'Unexpected response from QR service. Check Supabase Edge Function logs.' }
 }

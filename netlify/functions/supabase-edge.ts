@@ -1,4 +1,16 @@
-import type { Handler } from '@netlify/functions'
+import type { Handler, HandlerEvent } from '@netlify/functions'
+
+function decodeBody(event: HandlerEvent): string {
+  const raw = event.body ?? '{}'
+  if (event.isBase64Encoded) {
+    try {
+      return Buffer.from(raw, 'base64').toString('utf8')
+    } catch {
+      return raw
+    }
+  }
+  return raw
+}
 
 /**
  * Forwards POST to https://<project>.supabase.co/functions/v1/<fn> with the same
@@ -35,6 +47,8 @@ export const handler: Handler = async (event) => {
   }
 
   const url = `${base}/functions/v1/${fn}`
+  const body = decodeBody(event)
+
   let res: Response
   try {
     res = await fetch(url, {
@@ -44,7 +58,7 @@ export const handler: Handler = async (event) => {
         Authorization: auth,
         apikey: anon,
       },
-      body: event.body ?? '{}',
+      body,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Upstream fetch failed'
@@ -52,6 +66,35 @@ export const handler: Handler = async (event) => {
   }
 
   const text = await res.text()
+
+  if (res.status === 404) {
+    const ct = res.headers.get('Content-Type') ?? ''
+    if (ct.includes('application/json') && text) {
+      try {
+        JSON.parse(text)
+        return {
+          statusCode: 404,
+          headers: { 'Content-Type': 'application/json' },
+          body: text,
+        }
+      } catch {
+        /* fall through: HTML or plain 404 from gateway */
+      }
+    }
+    const bodyOut = JSON.stringify({
+      error: 'Edge Function not found',
+      code: 'NOT_DEPLOYED',
+      hint:
+        'Deploy this function to the Supabase project that matches VITE_SUPABASE_URL: supabase functions deploy ' +
+        fn,
+    })
+    return {
+      statusCode: 404,
+      headers: { 'Content-Type': 'application/json' },
+      body: bodyOut,
+    }
+  }
+
   return {
     statusCode: res.status,
     headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json' },

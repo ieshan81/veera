@@ -19,6 +19,7 @@ export function usePlantQrMutation() {
       void qc.invalidateQueries({ queryKey: ['plant'] })
       void qc.invalidateQueries({ queryKey: ['plant-qrs'] })
       void qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      void qc.invalidateQueries({ queryKey: ['plant-qr-url'] })
     },
   })
 }
