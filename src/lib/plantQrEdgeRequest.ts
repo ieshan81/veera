@@ -1,3 +1,4 @@
+import { FunctionsFetchError, FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabaseClient'
 import { getEdgeFunctionUrl } from '@/lib/edgeFunctionUrl'
 import { friendlyQrErrorMessage, logQrErrorDev } from '@/lib/qrErrors'
@@ -52,22 +53,19 @@ function parseQrJson(text: string): ParsedQrError {
   }
 }
 
-/** When true, try refreshSession() once and retry the QR request (not used for missing-header 401s). */
 function shouldRetry401WithRefresh(status: number, parsed: ParsedQrError): boolean {
   if (status !== 401) return false
   if (parsed.code === 'AUTH_HEADER_MISSING' || parsed.code === 'PROXY_MISSING_AUTHORIZATION') return false
   if (parsed.code === 'JWT_INVALID') return true
-  // Legacy Edge Function (before distinct codes): treat as JWT unless clearly "missing header"
   if (parsed.code === 'UNAUTHORIZED') {
     const err = (parsed.error ?? '').toLowerCase()
     if (err.includes('missing authorization')) return false
     return true
   }
-  // Unknown body (HTML/plain): still attempt one refresh in case JWT expired
   return true
 }
 
-async function postPlantQrUpsert(
+async function postPlantQrUpsertFetch(
   url: string,
   plantId: string,
   mode: QrMode,
@@ -88,79 +86,91 @@ async function postPlantQrUpsert(
 }
 
 /**
- * Calls plant-qr-upsert via fetch so failures surface as 404 / network / body text
- * instead of the generic "Failed to send a request to the Edge Function".
+ * Ensure Auth has a valid user JWT in storage (getUser hits server; refresh if needed).
  */
-export async function requestPlantQrUpsert(plantId: string, mode: QrMode): Promise<PlantQrUpsertResult> {
-  const base = import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, '')
-  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
-  if (!base || !anon) {
-    return { ok: false, message: 'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.' }
+async function ensureAuthReadyForEdge(): Promise<{ ok: true } | { ok: false; message: string }> {
+  let { data: userData, error: userErr } = await supabase.auth.getUser()
+  if (userErr || !userData.user) {
+    const { data: ref, error: refErr } = await supabase.auth.refreshSession()
+    if (import.meta.env.DEV) {
+      console.debug('[VEERA QR] getUser failed, refreshSession', {
+        userErr: userErr?.message,
+        refreshed: !!ref.session,
+        refErr: refErr?.message,
+      })
+    }
+    if (!ref.session?.access_token) {
+      return {
+        ok: false,
+        message:
+          'Your session could not be refreshed. Sign out, sign in again, then generate the QR code.',
+      }
+    }
+    ;({ data: userData, error: userErr } = await supabase.auth.getUser())
   }
-
-  const {
-    data: { session: initialSession },
-  } = await supabase.auth.getSession()
-
-  if (import.meta.env.DEV) {
-    console.debug('[VEERA QR] session before QR request', {
-      hasSession: !!initialSession,
-      hasAccessToken: !!initialSession?.access_token,
-      accessTokenLength: initialSession?.access_token?.length ?? 0,
-      hasRefreshToken: !!initialSession?.refresh_token,
-    })
-  }
-
-  if (!initialSession?.access_token) {
+  if (userErr || !userData.user) {
     return {
       ok: false,
       message:
-        'No access token in this browser session. Open a new tab, sign in again, then return here and generate the QR code.',
+        'Sign-in is not valid for the QR service. Sign out, sign in again, then retry.',
+    }
+  }
+  return { ok: true }
+}
+
+async function maybeProactiveRefresh(): Promise<void> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token || !session?.refresh_token) return
+  if (!accessTokenNeedsRefresh(token, 120_000)) return
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: session.refresh_token })
+  if (import.meta.env.DEV) {
+    console.debug('[VEERA QR] proactive refreshSession', { ok: !!data.session?.access_token, error: error?.message })
+  }
+}
+
+type InvokeOutcome =
+  | { kind: 'ok'; data: PlantQrSuccessPayload }
+  | { kind: 'http'; status: number; text: string }
+  | { kind: 'network'; message: string }
+
+async function invokePlantQrUpsert(plantId: string, mode: QrMode): Promise<InvokeOutcome> {
+  const { data, error, response } = await supabase.functions.invoke<PlantQrSuccessPayload>('plant-qr-upsert', {
+    body: { plant_id: plantId, mode },
+  })
+
+  if (!error && data && typeof data === 'object' && data.ok === true && data.qr_id) {
+    return { kind: 'ok', data: data as PlantQrSuccessPayload }
+  }
+
+  if (error instanceof FunctionsHttpError) {
+    const res = (error as FunctionsHttpError & { context?: Response }).context ?? response
+    const status = res?.status ?? 0
+    let text = ''
+    try {
+      text = res ? await res.clone().text() : ''
+    } catch {
+      text = ''
+    }
+    return { kind: 'http', status, text }
+  }
+
+  if (error instanceof FunctionsFetchError) {
+    return {
+      kind: 'network',
+      message: error.message || 'Failed to reach Supabase Edge Function',
     }
   }
 
-  let accessToken = initialSession.access_token
-
-  // Proactive refresh: getSession() can return an expired JWT; Edge getUser() will reject it.
-  if (accessTokenNeedsRefresh(accessToken, 120_000) && initialSession.refresh_token) {
-    const { data: refreshed, error: refErr } = await supabase.auth.refreshSession({
-      refresh_token: initialSession.refresh_token,
-    })
-    if (import.meta.env.DEV) {
-      console.debug('[VEERA QR] proactive refreshSession', {
-        ok: !!refreshed.session?.access_token,
-        error: refErr?.message,
-      })
-    }
-    if (refreshed.session?.access_token) {
-      accessToken = refreshed.session.access_token
-    }
+  return {
+    kind: 'network',
+    message: error instanceof Error ? error.message : 'Unexpected error calling QR service',
   }
+}
 
-  const url = getEdgeFunctionUrl('plant-qr-upsert')
-  if (!url) {
-    return { ok: false, message: 'Missing VITE_SUPABASE_URL.' }
-  }
-
-  let { res, text } = await postPlantQrUpsert(url, plantId, mode, accessToken, anon)
-  let parsed = parseQrJson(text)
-
-  if (res.status === 401 && shouldRetry401WithRefresh(res.status, parsed)) {
-    const { data: refreshed, error: refErr } = await supabase.auth.refreshSession()
-    if (import.meta.env.DEV) {
-      console.debug('[VEERA QR] retry after 401: refreshSession', {
-        ok: !!refreshed.session?.access_token,
-        error: refErr?.message,
-      })
-    }
-    if (refreshed.session?.access_token) {
-      const second = await postPlantQrUpsert(url, plantId, mode, refreshed.session.access_token, anon)
-      res = second.res
-      text = second.text
-      parsed = parseQrJson(text)
-    }
-  }
-
+function resultFromHttpFailure(status: number, text: string): PlantQrUpsertResult {
   let json: PlantQrSuccessPayload & ParsedQrError = {} as PlantQrSuccessPayload & ParsedQrError
   if (text) {
     try {
@@ -169,38 +179,130 @@ export async function requestPlantQrUpsert(plantId: string, mode: QrMode): Promi
       json = { error: text.slice(0, 280) } as PlantQrSuccessPayload & ParsedQrError
     }
   }
+  logQrErrorDev(text, json, { httpStatus: status })
+  const message = friendlyQrErrorMessage({
+    httpStatus: status,
+    bodyText: text,
+    parsed: { error: json.error, code: json.code, hint: json.hint },
+  })
+  return { ok: false, message }
+}
 
-  logQrErrorDev(text, json, { httpStatus: res.status })
+function normalizeSuccess(data: PlantQrSuccessPayload, plantId: string): PlantQrUpsertResult {
+  if (data.plant_id) {
+    return { ok: true, data }
+  }
+  return {
+    ok: true,
+    data: {
+      ...data,
+      plant_id: plantId,
+    },
+  }
+}
 
-  if (!res.ok) {
-    const message = friendlyQrErrorMessage({
-      httpStatus: res.status,
-      bodyText: text,
-      parsed: { error: json.error, code: json.code, hint: json.hint },
+/**
+ * Calls plant-qr-upsert. Prefers supabase.functions.invoke (direct to Supabase + SDK auth headers)
+ * so Netlify cannot strip Authorization. Falls back to fetch via Netlify proxy only on network errors.
+ */
+export async function requestPlantQrUpsert(plantId: string, mode: QrMode): Promise<PlantQrUpsertResult> {
+  const base = import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, '')
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
+  if (!base || !anon) {
+    return { ok: false, message: 'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.' }
+  }
+
+  const authReady = await ensureAuthReadyForEdge()
+  if (!authReady.ok) {
+    return { ok: false, message: authReady.message }
+  }
+
+  await maybeProactiveRefresh()
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (import.meta.env.DEV) {
+    console.debug('[VEERA QR] before invoke', {
+      hasSession: !!session,
+      hasAccessToken: !!session?.access_token,
+      accessTokenLength: session?.access_token?.length ?? 0,
     })
-    return { ok: false, message }
   }
-
-  if (json.ok === true && json.qr_id) {
-    if (json.plant_id) {
-      return { ok: true, data: json as PlantQrSuccessPayload }
-    }
-    const legacy = json as { ok: true; qr_id: string; path?: string; reused?: boolean }
+  if (!session?.access_token) {
     return {
-      ok: true,
-      data: {
-        ok: true,
-        plant_id: plantId,
-        qr_id: legacy.qr_id,
-        qr_token: '',
-        qr_value: '',
-        qr_image_path: legacy.path ?? null,
-        is_primary: true,
-        status: 'ready',
-        reused: legacy.reused,
-      },
+      ok: false,
+      message:
+        'No access token available after sign-in check. Refresh the page and try again.',
     }
   }
 
-  return { ok: false, message: 'Unexpected response from QR service. Check Supabase Edge Function logs.' }
+  let outcome = await invokePlantQrUpsert(plantId, mode)
+
+  if (outcome.kind === 'http' && outcome.status === 401) {
+    const parsed = parseQrJson(outcome.text)
+    if (shouldRetry401WithRefresh(outcome.status, parsed)) {
+      const { data: ref } = await supabase.auth.refreshSession()
+      if (import.meta.env.DEV) {
+        console.debug('[VEERA QR] retry invoke after 401', { ok: !!ref.session?.access_token })
+      }
+      if (ref.session?.access_token) {
+        outcome = await invokePlantQrUpsert(plantId, mode)
+      }
+    }
+  }
+
+  if (outcome.kind === 'ok') {
+    return normalizeSuccess(outcome.data, plantId)
+  }
+
+  if (outcome.kind === 'http') {
+    return resultFromHttpFailure(outcome.status, outcome.text)
+  }
+
+  // Network failure on direct invoke — try Netlify proxy path (same token)
+  if (import.meta.env.DEV) {
+    console.warn('[VEERA QR] invoke network error, trying proxy URL if configured:', outcome.message)
+  }
+  const proxyUrl = getEdgeFunctionUrl('plant-qr-upsert')
+  const directUrl = `${base}/functions/v1/plant-qr-upsert`
+  if (proxyUrl && proxyUrl !== directUrl) {
+    const {
+      data: { session: s2 },
+    } = await supabase.auth.getSession()
+    const token = s2?.access_token
+    if (token) {
+      let { res, text } = await postPlantQrUpsertFetch(proxyUrl, plantId, mode, token, anon)
+      if (res.status === 401) {
+        const parsed = parseQrJson(text)
+        if (shouldRetry401WithRefresh(res.status, parsed)) {
+          const { data: ref } = await supabase.auth.refreshSession()
+          if (ref.session?.access_token) {
+            const second = await postPlantQrUpsertFetch(proxyUrl, plantId, mode, ref.session.access_token, anon)
+            res = second.res
+            text = second.text
+          }
+        }
+      }
+      if (res.ok) {
+        let json: PlantQrSuccessPayload & ParsedQrError = {} as PlantQrSuccessPayload & ParsedQrError
+        if (text) {
+          try {
+            json = JSON.parse(text) as PlantQrSuccessPayload & ParsedQrError
+          } catch {
+            return resultFromHttpFailure(res.status, text)
+          }
+        }
+        if (json.ok === true && json.qr_id) {
+          return normalizeSuccess(json as PlantQrSuccessPayload, plantId)
+        }
+      }
+      return resultFromHttpFailure(res.status, text)
+    }
+  }
+
+  return {
+    ok: false,
+    message: `${outcome.message} If you are on a strict network, try another connection or contact support.`,
+  }
 }
