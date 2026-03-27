@@ -147,15 +147,16 @@ Do **not** put the service role key in `.env` for Vite—only anon + URL.
 |----------|--------|---------|
 | `VITE_SUPABASE_URL` | Netlify + `.env` | Supabase API URL |
 | `VITE_SUPABASE_ANON_KEY` | Netlify + `.env` | Public anon key (browser) |
-| `QR_PUBLIC_BASE_URL` | Edge Function secrets | Base path for deep links (no trailing slash), e.g. `https://veera.yourdomain.com/p` → QR opens `…/p/<token>` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Edge only (managed) | Storage upload + admin DB in function |
+| `VITE_QR_PUBLIC_BASE_URL` | Netlify + `.env` | Deep-link base (no trailing slash), e.g. `https://veera.yourdomain.com/p` → QR URL is `…/p/<token>` |
+| `QR_PUBLIC_BASE_URL` | Edge Function secrets (optional) | Only needed if you still use the Edge Function for QR generation |
+| `SUPABASE_SERVICE_ROLE_KEY` | Edge only (managed) | Only needed for Edge Functions |
 
 ## GitHub → Netlify
 
 1. Push this repo to GitHub.
 2. In Netlify: **Add new site → Import from Git**, pick the repo.
 3. Build settings: **Build command** `npm run build`, **Publish directory** `dist` (already set in [`netlify.toml`](./netlify.toml)).
-4. Add environment variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+4. Add environment variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_QR_PUBLIC_BASE_URL`.
 5. In Supabase **Auth → URL configuration**, add your Netlify site URL (and `http://localhost:5173` for local) to redirect allow list as needed.
 
 ## Daily operations
