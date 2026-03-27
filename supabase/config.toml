@@ -1,5 +1,5 @@
 # https://supabase.com/docs/guides/cli/config
-project_id = ""
+project_id = "zzjmfpwfsqykgxynfbgy"
 
 [api]
 enabled = true

@@ -20,6 +20,13 @@ const schema = z.object({
     .string()
     .min(1, 'Required')
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers, and hyphens only'),
+  qr_target_url: z
+    .string()
+    .optional()
+    .refine(
+      (s) => !s?.trim() || /^https:\/\/.+/i.test(s.trim()),
+      'Use a full https:// link or leave empty',
+    ),
   summary: z.string().optional(),
   light_level: z.string().optional(),
   water_level: z.string().optional(),
@@ -80,6 +87,7 @@ export function PlantNewPage() {
         water_level: values.water_level || null,
         internal_notes: values.internal_notes || null,
         status: values.status,
+        qr_target_url: values.qr_target_url?.trim() || null,
       })
       .select('id')
       .single()
@@ -163,6 +171,23 @@ export function PlantNewPage() {
               <Label htmlFor="slug">URL slug</Label>
               <Input id="slug" {...register('slug')} />
               {errors.slug ? <p className="mt-1 text-sm text-red-600">{errors.slug.message}</p> : null}
+            </div>
+            <div>
+              <Label htmlFor="qr_target_url">External product link (optional)</Label>
+              <Input
+                id="qr_target_url"
+                type="url"
+                placeholder="https://…"
+                autoComplete="off"
+                {...register('qr_target_url')}
+              />
+              {errors.qr_target_url ? (
+                <p className="mt-1 text-sm text-red-600">{errors.qr_target_url.message}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">
+                  For your reference only. After you create the plant, the QR section uses an app deep link, not this field.
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="status">Status</Label>

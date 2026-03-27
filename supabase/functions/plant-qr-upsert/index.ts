@@ -13,6 +13,12 @@ function json(body: unknown, status = 200) {
   })
 }
 
+/** Deep-link URL encoded in the QR: {QR_PUBLIC_BASE_URL}/{token}, e.g. https://veera.example.com/p/<token> */
+function buildQrValue(qrBase: string, token: string): string {
+  const base = qrBase.replace(/\/$/, '')
+  return `${base}/${token}`
+}
+
 type SuccessPayload = {
   ok: true
   plant_id: string
@@ -34,7 +40,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const qrBase = Deno.env.get('QR_PUBLIC_BASE_URL') ?? 'https://app.veera.com/p'
+    const qrBase = Deno.env.get('QR_PUBLIC_BASE_URL') ?? 'https://veera.yourdomain.com/p'
 
     if (!supabaseUrl || !anonKey || !serviceKey) {
       return json({ error: 'Server misconfigured', code: 'SERVER_CONFIG' }, 500)
@@ -82,7 +88,7 @@ Deno.serve(async (req) => {
       return json({ error: 'plant_id required', code: 'BAD_REQUEST' }, 400)
     }
 
-    const { data: plant, error: plantErr } = await admin.from('plants').select('id, slug').eq('id', plantId).single()
+    const { data: plant, error: plantErr } = await admin.from('plants').select('id').eq('id', plantId).single()
     if (plantErr || !plant) {
       return json({ error: 'Plant not found', code: 'PLANT_NOT_FOUND' }, 404)
     }
@@ -123,8 +129,7 @@ Deno.serve(async (req) => {
     }
 
     const qrToken = crypto.randomUUID().replace(/-/g, '')
-    const base = qrBase.replace(/\/$/, '')
-    const qrValue = `${base}/${plant.slug}?t=${qrToken}`
+    const qrValue = buildQrValue(qrBase, qrToken)
 
     const { data: inserted, error: insErr } = await admin
       .from('plant_qr_codes')

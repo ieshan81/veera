@@ -12,6 +12,7 @@ import { PlantDetailPage } from '@/pages/PlantDetailPage'
 import { TagsPage } from '@/pages/TagsPage'
 import { ImportPage } from '@/pages/ImportPage'
 import { TeamPage } from '@/pages/TeamPage'
+import { IntegrationsPage } from '@/pages/IntegrationsPage'
 
 function Protected({ children }: { children: ReactNode }) {
   const { session, loading, isAdmin } = useAuth()
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="plants/:id" element={<PlantDetailPage />} />
           <Route path="tags" element={<TagsPage />} />
           <Route path="import" element={<ImportPage />} />
+          <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="team" element={<TeamPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

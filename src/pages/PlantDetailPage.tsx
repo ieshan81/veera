@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ArrowDown, ArrowUp, Download, ImagePlus, QrCode, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, Download, ExternalLink, ImagePlus, QrCode, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import { friendlyDbError } from '@/lib/errors'
 import { sectionKeyFromLabel, slugify } from '@/lib/slug'
@@ -16,10 +16,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { usePlantQrMutation } from '@/hooks/usePlantQr'
 
+const optionalHttpsUrl = z
+  .string()
+  .optional()
+  .refine(
+    (s) => !s?.trim() || /^https:\/\/.+/i.test(s.trim()),
+    'Use a full https:// link, or leave empty',
+  )
+
 const coreSchema = z.object({
   common_name: z.string().min(1),
   scientific_name: z.string().optional(),
   slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  qr_target_url: optionalHttpsUrl,
   summary: z.string().optional(),
   light_level: z.string().optional(),
   water_level: z.string().optional(),
@@ -34,6 +43,7 @@ export function PlantDetailPage() {
   const plantId = id ?? ''
   const qc = useQueryClient()
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [copiedHint, setCopiedHint] = useState<null | 'token' | 'url'>(null)
 
   const plantQuery = useQuery({
     queryKey: ['plant', plantId],
@@ -131,6 +141,7 @@ export function PlantDetailPage() {
           common_name: plantQuery.data.common_name,
           scientific_name: plantQuery.data.scientific_name ?? '',
           slug: plantQuery.data.slug,
+          qr_target_url: plantQuery.data.qr_target_url ?? '',
           summary: plantQuery.data.summary ?? '',
           light_level: plantQuery.data.light_level ?? '',
           water_level: plantQuery.data.water_level ?? '',
@@ -165,6 +176,7 @@ export function PlantDetailPage() {
         common_name: values.common_name,
         scientific_name: values.scientific_name || null,
         slug: values.slug,
+        qr_target_url: values.qr_target_url?.trim() || null,
         summary: values.summary || null,
         light_level: values.light_level || null,
         water_level: values.water_level || null,
@@ -200,6 +212,16 @@ export function PlantDetailPage() {
   })
 
   const qrMutation = usePlantQrMutation()
+
+  const copyToClipboard = async (text: string, hint: 'token' | 'url') => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedHint(hint)
+      window.setTimeout(() => setCopiedHint(null), 2000)
+    } catch {
+      setMsg({ type: 'err', text: 'Could not copy to clipboard.' })
+    }
+  }
 
   const addSection = useMutation({
     mutationFn: async (payload: { label: string; key: string; content: string }) => {
@@ -341,6 +363,24 @@ export function PlantDetailPage() {
               <Label htmlFor="slug">Slug</Label>
               <Input id="slug" {...register('slug')} />
               {errors.slug ? <p className="mt-1 text-sm text-red-600">{errors.slug.message}</p> : null}
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="qr_target_url">External product link (optional)</Label>
+              <Input
+                id="qr_target_url"
+                type="url"
+                placeholder="https://…"
+                autoComplete="off"
+                {...register('qr_target_url')}
+              />
+              {errors.qr_target_url ? (
+                <p className="mt-1 text-sm text-red-600">{errors.qr_target_url.message}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">
+                  For your own reference only (e.g. shop page). QR codes use the app deep link in the QR section below, not
+                  this field.
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="status">Status</Label>
@@ -582,9 +622,24 @@ export function PlantDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>QR code</CardTitle>
+          <CardTitle>QR code (app deep link)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <span className="text-sm font-medium text-slate-700">Status: </span>
+            {!primaryQr ? (
+              <Badge variant="warning">Missing</Badge>
+            ) : (
+              <Badge
+                variant={
+                  primaryQr.status === 'ready' ? 'success' : primaryQr.status === 'failed' ? 'danger' : 'warning'
+                }
+              >
+                {primaryQr.status === 'ready' ? 'Ready' : primaryQr.status === 'failed' ? 'Failed' : 'Pending'}
+              </Badge>
+            )}
+          </div>
+
           {!primaryQr ? (
             <p className="text-sm text-amber-800">No primary QR yet. Use Generate QR below.</p>
           ) : (
@@ -600,16 +655,44 @@ export function PlantDetailPage() {
                   <div className="flex h-40 w-40 items-center justify-center text-sm text-slate-500">Loading preview…</div>
                 )}
               </div>
-              <div className="min-w-0 flex-1 space-y-2 text-sm">
+              <div className="min-w-0 flex-1 space-y-3 text-sm">
                 <div>
-                  <span className="font-medium text-slate-700">Status: </span>
-                  <Badge variant={primaryQr.status === 'ready' ? 'success' : primaryQr.status === 'failed' ? 'danger' : 'warning'}>
-                    {primaryQr.status}
-                  </Badge>
+                  <div className="font-medium text-slate-700">QR token</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <code className="break-all rounded bg-stone-100 px-2 py-1 text-xs text-slate-800">{primaryQr.qr_token}</code>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-8 shrink-0"
+                      onClick={() => void copyToClipboard(primaryQr.qr_token, 'token')}
+                    >
+                      <Copy className="mr-1 h-3.5 w-3.5" />
+                      {copiedHint === 'token' ? 'Copied' : 'Copy'}
+                    </Button>
+                  </div>
                 </div>
-                <div className="break-all text-slate-600">
-                  <span className="font-medium text-slate-700">Value: </span>
-                  {primaryQr.qr_value}
+                <div>
+                  <div className="font-medium text-slate-700">QR URL</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 break-all text-slate-600">{primaryQr.qr_value}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-8"
+                      onClick={() => void copyToClipboard(primaryQr.qr_value, 'url')}
+                    >
+                      <Copy className="mr-1 h-3.5 w-3.5" />
+                      {copiedHint === 'url' ? 'Copied' : 'Copy link'}
+                    </Button>
+                    <Button variant="secondary" className="h-8" type="button" asChild>
+                      <a href={primaryQr.qr_value} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                        Test link
+                      </a>
+                    </Button>
+                  </div>
                 </div>
                 {primaryQr.last_error ? (
                   <div className="rounded-md bg-red-50 p-2 text-sm text-red-800">
@@ -621,7 +704,7 @@ export function PlantDetailPage() {
                     </p>
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2 pt-2">
+                <div className="flex flex-wrap gap-2 pt-1">
                   {signedQrUrl.data ? (
                     <Button variant="secondary" type="button" asChild>
                       <a href={signedQrUrl.data} download={`${plantQuery.data.slug}-qr.png`}>

@@ -50,6 +50,7 @@ export type Database = {
           light_level: string | null
           water_level: string | null
           internal_notes: string | null
+          qr_target_url: string | null
           created_at: string
           updated_at: string
         }
@@ -62,6 +63,7 @@ export type Database = {
           light_level?: string | null
           water_level?: string | null
           internal_notes?: string | null
+          qr_target_url?: string | null
         }
         Update: {
           slug?: string
@@ -72,6 +74,7 @@ export type Database = {
           light_level?: string | null
           water_level?: string | null
           internal_notes?: string | null
+          qr_target_url?: string | null
         }
       }
       plant_catalog_photos: {

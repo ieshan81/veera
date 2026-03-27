@@ -78,9 +78,29 @@ Clean admin dashboard for managing plants, tags, flexible content sections, phot
 
 **Behavior:** The function validates the caller’s JWT, checks `user_roles` for `admin` / `super_admin`, loads the plant, generates a PNG QR into Storage bucket **`plant-qr`** at `plants/<plant_id>/<token>.png`, and upserts **`plant_qr_codes`** (`pending` → `ready` or `failed`).
 
+**QR payload (app deep link):** Each QR encodes a single URL: `{QR_PUBLIC_BASE_URL}/{qr_token}` — for example `https://veera.yourdomain.com/p/<qr_token>` when the secret is `https://veera.yourdomain.com/p`. That value is stored in **`plant_qr_codes.qr_value`** (and must match universal links / app configuration later). Regenerate QR after changing `QR_PUBLIC_BASE_URL`. The optional plant field **`qr_target_url`** is for staff reference only (e.g. external product page); it is **not** used when building the QR. Existing rows keep old URLs until you use **Regenerate QR** on each plant. Apply the column with [`scripts/add-plants-qr-target-url.sql`](./scripts/add-plants-qr-target-url.sql) only if upgrading a database created before that column existed.
+
 **Netlify proxy:** [`netlify.toml`](./netlify.toml) sets `VITE_NETLIFY_EDGE_PROXY=true` so production builds call `/.netlify/functions/supabase-edge?fn=plant-qr-upsert` (same origin). That function forwards to `https://<project>.supabase.co/functions/v1/<fn>` with the same `Authorization` and JSON body. Ensure **Netlify → Functions** lists **`supabase-edge`**. Local `npm run dev` calls Supabase **directly** (no proxy).
 
 **If you still see 404:** The function is missing on the project behind `VITE_SUPABASE_URL`, or the URL/key point at a different project. Redeploy with the steps above using the correct `project-ref`.
+
+### Quick deploy from this repo (Windows / npm)
+
+This repo pins the Supabase project ref in [`supabase/config.toml`](./supabase/config.toml) (`project_id`). You must authenticate once:
+
+1. **`npm run supabase:login`** — opens the browser to link the CLI to your Supabase account.
+2. **`npm run supabase:link`** — links the local folder to the project (ref matches `VITE_SUPABASE_URL` in `.env`).
+3. Set the QR prefix (use your real public app URL):  
+   `npx supabase secrets set QR_PUBLIC_BASE_URL=https://your-site.com/p`
+4. **`npm run supabase:deploy:edge`** — deploys both `plant-qr-upsert` and `admin-signup`.
+
+**Without a browser:** create a **Personal Access Token** at [Supabase Account → Access Tokens](https://supabase.com/dashboard/account/tokens), then in PowerShell:
+
+```powershell
+$env:SUPABASE_ACCESS_TOKEN = "sbp_..."   # your token
+$env:QR_PUBLIC_BASE_URL = "https://your-site.com/p"   # optional; omit to keep existing secret
+.\scripts\deploy-supabase-edge.ps1
+```
 
 ## Edge Function: `admin-signup` (gated admin registration)
 
@@ -127,7 +147,7 @@ Do **not** put the service role key in `.env` for Vite—only anon + URL.
 |----------|--------|---------|
 | `VITE_SUPABASE_URL` | Netlify + `.env` | Supabase API URL |
 | `VITE_SUPABASE_ANON_KEY` | Netlify + `.env` | Public anon key (browser) |
-| `QR_PUBLIC_BASE_URL` | Edge Function secrets | Prefix for `qr_value` inside each QR |
+| `QR_PUBLIC_BASE_URL` | Edge Function secrets | Base path for deep links (no trailing slash), e.g. `https://veera.yourdomain.com/p` → QR opens `…/p/<token>` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge only (managed) | Storage upload + admin DB in function |
 
 ## GitHub → Netlify

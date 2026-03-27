@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Leaf, LayoutDashboard, Sprout, Tag, Upload, Users } from 'lucide-react'
+import { Leaf, LayoutDashboard, Plug, Sprout, Tag, Upload, Users } from 'lucide-react'
 import { useAuth } from '@/auth/useAuth'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -43,6 +43,10 @@ export function Layout() {
           <NavLink to="/import" className={navClass}>
             <Upload className="h-4 w-4 shrink-0" />
             Import
+          </NavLink>
+          <NavLink to="/integrations" className={navClass}>
+            <Plug className="h-4 w-4 shrink-0" />
+            Integrations
           </NavLink>
           {isSuperAdmin ? (
             <NavLink to="/team" className={navClass}>

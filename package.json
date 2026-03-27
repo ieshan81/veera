@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link --project-ref zzjmfpwfsqykgxynfbgy",
+    "supabase:deploy:qr": "supabase functions deploy plant-qr-upsert",
+    "supabase:deploy:admin-signup": "supabase functions deploy admin-signup",
+    "supabase:deploy:edge": "supabase functions deploy plant-qr-upsert && supabase functions deploy admin-signup"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -37,6 +42,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "supabase": "^2.84.0",
     "tailwindcss": "^4.2.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",

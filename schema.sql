@@ -77,11 +77,16 @@ create table if not exists public.plants (
   light_level text,
   water_level text,
   internal_notes text,
+  -- Optional external product/reference URL for staff (not used for QR encoding). QR payloads are app deep links only.
+  qr_target_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint plants_slug_format check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
   constraint plants_slug_unique unique (slug)
 );
+
+-- Existing databases: add column if missing
+alter table public.plants add column if not exists qr_target_url text;
 
 create index if not exists plants_status_idx on public.plants (status);
 create index if not exists plants_updated_at_idx on public.plants (updated_at desc);
@@ -112,6 +117,7 @@ create table if not exists public.plant_qr_codes (
   id uuid primary key default gen_random_uuid(),
   plant_id uuid not null references public.plants (id) on delete cascade,
   qr_token text not null,
+  -- Full URL encoded in the QR image (e.g. https://veera.example.com/p/<qr_token>); set by Edge Function from QR_PUBLIC_BASE_URL.
   qr_value text not null,
   qr_image_path text,
   is_primary boolean not null default false,
