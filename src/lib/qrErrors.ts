@@ -20,6 +20,15 @@ export function friendlyQrErrorMessage(params: {
   }
 
   if (httpStatus === 401) {
+    if (code === 'PROXY_MISSING_AUTHORIZATION') {
+      return 'Your sign-in token did not reach the server (Netlify proxy). Redeploy so the latest supabase-edge function runs, or try from local dev. If it persists, check Netlify function logs.'
+    }
+    if (code === 'AUTH_HEADER_MISSING') {
+      return 'The QR service received no Authorization header. Refresh the page and try again. If this repeats, note code AUTH_HEADER_MISSING for support.'
+    }
+    if (code === 'JWT_INVALID') {
+      return 'Your access token was rejected (expired or invalid). Sign out, sign in again, then generate the QR code. The app will try to refresh your session automatically when possible.'
+    }
     return 'You are not signed in or your session expired. Please sign in again and retry generating the QR code.'
   }
 
@@ -54,8 +63,8 @@ export function friendlyQrErrorMessage(params: {
   return parsed.error ?? 'QR generation failed. Try again or use Retry on the plant page.'
 }
 
-export function logQrErrorDev(raw: string, parsed: unknown): void {
+export function logQrErrorDev(raw: string, parsed: unknown, extra?: { httpStatus?: number }): void {
   if (import.meta.env.DEV) {
-    console.warn('[VEERA QR]', raw, parsed)
+    console.warn('[VEERA QR]', extra?.httpStatus != null ? `HTTP ${extra.httpStatus}` : '', raw, parsed)
   }
 }

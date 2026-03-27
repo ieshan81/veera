@@ -1,5 +1,27 @@
 import type { Handler, HandlerEvent } from '@netlify/functions'
 
+/** Netlify / Lambda may normalize header names; some clients send Authorization. */
+function getIncomingAuthorization(event: HandlerEvent): string {
+  const h = event.headers ?? {}
+  for (const key of Object.keys(h)) {
+    if (key.toLowerCase() === 'authorization') {
+      const v = h[key]
+      if (typeof v === 'string' && v.trim()) return v.trim()
+    }
+  }
+  const mv = (event as { multiValueHeaders?: Record<string, string[] | undefined> }).multiValueHeaders
+  if (mv) {
+    for (const key of Object.keys(mv)) {
+      if (key.toLowerCase() === 'authorization') {
+        const arr = mv[key]
+        const first = Array.isArray(arr) ? arr[0] : undefined
+        if (typeof first === 'string' && first.trim()) return first.trim()
+      }
+    }
+  }
+  return ''
+}
+
 function decodeBody(event: HandlerEvent): string {
   const raw = event.body ?? '{}'
   if (event.isBase64Encoded) {
@@ -41,9 +63,16 @@ export const handler: Handler = async (event) => {
     }
   }
 
-  const auth = event.headers.authorization ?? event.headers.Authorization ?? ''
+  const auth = getIncomingAuthorization(event)
   if (!auth) {
-    return { statusCode: 401, body: JSON.stringify({ error: 'Missing Authorization header' }) }
+    return {
+      statusCode: 401,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: 'Missing Authorization header (proxy did not receive it from the browser)',
+        code: 'PROXY_MISSING_AUTHORIZATION',
+      }),
+    }
   }
 
   const url = `${base}/functions/v1/${fn}`

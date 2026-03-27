@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return json({ error: 'Missing authorization', code: 'UNAUTHORIZED' }, 401)
+      return json({ error: 'Missing Authorization header', code: 'AUTH_HEADER_MISSING' }, 401)
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -59,7 +59,15 @@ Deno.serve(async (req) => {
       error: userErr,
     } = await userClient.auth.getUser()
     if (userErr || !user) {
-      return json({ error: 'Invalid or expired session', code: 'UNAUTHORIZED' }, 401)
+      console.error('[plant-qr-upsert] getUser failed', userErr?.message ?? 'no user')
+      return json(
+        {
+          error: userErr?.message ?? 'Invalid or expired JWT',
+          code: 'JWT_INVALID',
+          hint: 'Access token failed validation; client should refresh session and retry.',
+        },
+        401,
+      )
     }
 
     const admin = createClient(supabaseUrl, serviceKey)

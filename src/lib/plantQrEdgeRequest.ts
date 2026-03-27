@@ -20,6 +20,73 @@ export type PlantQrUpsertResult =
   | { ok: true; data: PlantQrSuccessPayload }
   | { ok: false; message: string }
 
+/** JWT `exp` in ms, or null if not parseable (does not verify signature). */
+function decodeJwtExpMs(accessToken: string): number | null {
+  try {
+    const parts = accessToken.split('.')
+    if (parts.length < 2) return null
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const pad = b64.length % 4
+    if (pad) b64 += '='.repeat(4 - pad)
+    const payload = JSON.parse(atob(b64)) as { exp?: number }
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
+function accessTokenNeedsRefresh(accessToken: string, skewMs: number): boolean {
+  const expMs = decodeJwtExpMs(accessToken)
+  if (expMs === null) return false
+  return expMs < Date.now() + skewMs
+}
+
+type ParsedQrError = { error?: string; code?: string; hint?: string }
+
+function parseQrJson(text: string): ParsedQrError {
+  if (!text) return {}
+  try {
+    return JSON.parse(text) as ParsedQrError
+  } catch {
+    return {}
+  }
+}
+
+/** When true, try refreshSession() once and retry the QR request (not used for missing-header 401s). */
+function shouldRetry401WithRefresh(status: number, parsed: ParsedQrError): boolean {
+  if (status !== 401) return false
+  if (parsed.code === 'AUTH_HEADER_MISSING' || parsed.code === 'PROXY_MISSING_AUTHORIZATION') return false
+  if (parsed.code === 'JWT_INVALID') return true
+  // Legacy Edge Function (before distinct codes): treat as JWT unless clearly "missing header"
+  if (parsed.code === 'UNAUTHORIZED') {
+    const err = (parsed.error ?? '').toLowerCase()
+    if (err.includes('missing authorization')) return false
+    return true
+  }
+  // Unknown body (HTML/plain): still attempt one refresh in case JWT expired
+  return true
+}
+
+async function postPlantQrUpsert(
+  url: string,
+  plantId: string,
+  mode: QrMode,
+  accessToken: string,
+  anon: string,
+): Promise<{ res: Response; text: string }> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      apikey: anon,
+    },
+    body: JSON.stringify({ plant_id: plantId, mode }),
+  })
+  const text = await res.text()
+  return { res, text }
+}
+
 /**
  * Calls plant-qr-upsert via fetch so failures surface as 404 / network / body text
  * instead of the generic "Failed to send a request to the Edge Function".
@@ -32,10 +99,42 @@ export async function requestPlantQrUpsert(plantId: string, mode: QrMode): Promi
   }
 
   const {
-    data: { session },
+    data: { session: initialSession },
   } = await supabase.auth.getSession()
-  if (!session?.access_token) {
-    return { ok: false, message: 'You are not signed in. Refresh the page and try again.' }
+
+  if (import.meta.env.DEV) {
+    console.debug('[VEERA QR] session before QR request', {
+      hasSession: !!initialSession,
+      hasAccessToken: !!initialSession?.access_token,
+      accessTokenLength: initialSession?.access_token?.length ?? 0,
+      hasRefreshToken: !!initialSession?.refresh_token,
+    })
+  }
+
+  if (!initialSession?.access_token) {
+    return {
+      ok: false,
+      message:
+        'No access token in this browser session. Open a new tab, sign in again, then return here and generate the QR code.',
+    }
+  }
+
+  let accessToken = initialSession.access_token
+
+  // Proactive refresh: getSession() can return an expired JWT; Edge getUser() will reject it.
+  if (accessTokenNeedsRefresh(accessToken, 120_000) && initialSession.refresh_token) {
+    const { data: refreshed, error: refErr } = await supabase.auth.refreshSession({
+      refresh_token: initialSession.refresh_token,
+    })
+    if (import.meta.env.DEV) {
+      console.debug('[VEERA QR] proactive refreshSession', {
+        ok: !!refreshed.session?.access_token,
+        error: refErr?.message,
+      })
+    }
+    if (refreshed.session?.access_token) {
+      accessToken = refreshed.session.access_token
+    }
   }
 
   const url = getEdgeFunctionUrl('plant-qr-upsert')
@@ -43,44 +142,35 @@ export async function requestPlantQrUpsert(plantId: string, mode: QrMode): Promi
     return { ok: false, message: 'Missing VITE_SUPABASE_URL.' }
   }
 
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-        apikey: anon,
-      },
-      body: JSON.stringify({ plant_id: plantId, mode }),
-    })
-  } catch (err) {
-    const hint =
-      'Could not reach the QR service. Check your network, VPN, or ad-blocker, and try again.'
-    if (err instanceof TypeError) {
-      return { ok: false, message: `${hint} (${err.message})` }
+  let { res, text } = await postPlantQrUpsert(url, plantId, mode, accessToken, anon)
+  let parsed = parseQrJson(text)
+
+  if (res.status === 401 && shouldRetry401WithRefresh(res.status, parsed)) {
+    const { data: refreshed, error: refErr } = await supabase.auth.refreshSession()
+    if (import.meta.env.DEV) {
+      console.debug('[VEERA QR] retry after 401: refreshSession', {
+        ok: !!refreshed.session?.access_token,
+        error: refErr?.message,
+      })
     }
-    return {
-      ok: false,
-      message: err instanceof Error ? err.message : 'Network error while contacting the QR service.',
+    if (refreshed.session?.access_token) {
+      const second = await postPlantQrUpsert(url, plantId, mode, refreshed.session.access_token, anon)
+      res = second.res
+      text = second.text
+      parsed = parseQrJson(text)
     }
   }
 
-  const text = await res.text()
-  let json: PlantQrSuccessPayload & { error?: string; code?: string; hint?: string } = {} as PlantQrSuccessPayload & {
-    error?: string
-    code?: string
-    hint?: string
-  }
+  let json: PlantQrSuccessPayload & ParsedQrError = {} as PlantQrSuccessPayload & ParsedQrError
   if (text) {
     try {
-      json = JSON.parse(text) as typeof json
+      json = JSON.parse(text) as PlantQrSuccessPayload & ParsedQrError
     } catch {
-      json = { error: text.slice(0, 280) } as typeof json
+      json = { error: text.slice(0, 280) } as PlantQrSuccessPayload & ParsedQrError
     }
   }
 
-  logQrErrorDev(text, json)
+  logQrErrorDev(text, json, { httpStatus: res.status })
 
   if (!res.ok) {
     const message = friendlyQrErrorMessage({
