@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePlantQrMutation } from '@/hooks/usePlantQr'
+import { fetchImageBlobFromUrl } from '@/lib/fetchImageFromUrl'
 
 const schema = z.object({
   common_name: z.string().min(1, 'Required'),
@@ -40,6 +41,7 @@ export function PlantNewPage() {
   const navigate = useNavigate()
   const coverInputRef = useRef<HTMLInputElement>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
+  const [coverImageUrl, setCoverImageUrl] = useState('')
   const [banner, setBanner] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const qrMutation = usePlantQrMutation()
 
@@ -66,12 +68,16 @@ export function PlantNewPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     setBanner(null)
-    if (!coverFile) {
-      setBanner({ type: 'err', text: 'Choose a cover photo (required).' })
-      coverInputRef.current?.focus()
+    const urlTrim = coverImageUrl.trim()
+    if (!coverFile && !urlTrim) {
+      setBanner({ type: 'err', text: 'Add a cover image: upload a file or paste a direct https image URL.' })
       return
     }
-    if (!coverFile.type.startsWith('image/')) {
+    if (!coverFile && urlTrim && !/^https:\/\//i.test(urlTrim)) {
+      setBanner({ type: 'err', text: 'Image URL must start with https://' })
+      return
+    }
+    if (coverFile && !coverFile.type.startsWith('image/')) {
       setBanner({ type: 'err', text: 'Cover must be an image file.' })
       return
     }
@@ -98,11 +104,35 @@ export function PlantNewPage() {
     }
 
     const plantId = data.id
-    const ext = coverFile.name.split('.').pop() || 'jpg'
-    const storagePath = `${plantId}/${crypto.randomUUID()}.${ext}`
-    const { error: upErr } = await supabase.storage.from('plant-photos').upload(storagePath, coverFile, {
+
+    let uploadBody: Blob
+    let contentType: string
+    let fileExt: string
+
+    if (coverFile) {
+      uploadBody = coverFile
+      contentType = coverFile.type || 'image/jpeg'
+      fileExt = coverFile.name.split('.').pop() || 'jpg'
+    } else {
+      try {
+        const fetched = await fetchImageBlobFromUrl(urlTrim)
+        uploadBody = fetched.blob
+        contentType = fetched.blob.type || 'image/jpeg'
+        fileExt = fetched.ext
+      } catch (e) {
+        await supabase.from('plants').delete().eq('id', plantId)
+        setBanner({
+          type: 'err',
+          text: e instanceof Error ? e.message : 'Could not load image from URL.',
+        })
+        return
+      }
+    }
+
+    const storagePath = `${plantId}/${crypto.randomUUID()}.${fileExt}`
+    const { error: upErr } = await supabase.storage.from('plant-photos').upload(storagePath, uploadBody, {
       upsert: false,
-      contentType: coverFile.type || 'image/jpeg',
+      contentType,
     })
     if (upErr) {
       await supabase.from('plants').delete().eq('id', plantId)
@@ -148,7 +178,8 @@ export function PlantNewPage() {
         </Button>
         <h1 className="text-2xl font-semibold text-slate-900">New plant</h1>
         <p className="text-sm text-slate-600">
-          A cover photo is required. Tags and extra sections are on the plant page after save.
+          A cover image is required (upload a file or paste an image URL). Tags and extra sections are on the plant page
+          after save.
         </p>
       </div>
 
@@ -216,17 +247,57 @@ export function PlantNewPage() {
               <Textarea id="internal_notes" {...register('internal_notes')} />
             </div>
 
-            <div>
-              <Label htmlFor="cover_photo">Cover photo</Label>
-              <Input
-                id="cover_photo"
-                ref={coverInputRef}
-                type="file"
-                accept="image/*"
-                className="cursor-pointer"
-                onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
-              />
-              <p className="mt-1 text-xs text-slate-500">Required — shown as the main catalog image.</p>
+            <div className="rounded-lg border border-[var(--color-veera-border)] bg-stone-50/50 p-4">
+              <Label className="text-base font-medium text-slate-800">Cover image (required)</Label>
+              <p className="mb-3 mt-1 text-xs text-slate-600">
+                Upload a file from your computer, or paste a direct link to an image file (https). If both are set, the
+                file upload is used.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="cover_photo" className="text-slate-700">
+                    Upload file
+                  </Label>
+                  <Input
+                    id="cover_photo"
+                    ref={coverInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="mt-1 cursor-pointer"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null
+                      setCoverFile(f)
+                      if (f) setCoverImageUrl('')
+                    }}
+                  />
+                </div>
+                <div className="relative text-center text-xs text-slate-500 before:absolute before:left-0 before:top-1/2 before:w-[42%] before:border-t before:border-[var(--color-veera-border)] after:absolute after:right-0 after:top-1/2 after:w-[42%] after:border-t after:border-[var(--color-veera-border)]">
+                  <span className="relative bg-stone-50/50 px-2">or</span>
+                </div>
+                <div>
+                  <Label htmlFor="cover_image_url">Image URL</Label>
+                  <Input
+                    id="cover_image_url"
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://example.com/plant-photo.jpg"
+                    autoComplete="off"
+                    value={coverImageUrl}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setCoverImageUrl(v)
+                      if (v.trim()) {
+                        setCoverFile(null)
+                        if (coverInputRef.current) coverInputRef.current.value = ''
+                      }
+                    }}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Must be a direct link to an image. Some hosts block browser downloads — use file upload if the URL
+                    fails.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {banner?.type === 'err' ? <p className="text-sm text-red-600">{banner.text}</p> : null}

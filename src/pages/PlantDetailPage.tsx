@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { usePlantQrMutation } from '@/hooks/usePlantQr'
+import { fetchImageBlobFromUrl } from '@/lib/fetchImageFromUrl'
 
 const optionalHttpsUrl = z
   .string()
@@ -281,7 +282,35 @@ export function PlantDetailPage() {
       })
       if (error) throw error
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['plant-photos', plantId] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['plant-photos', plantId] })
+      void qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    },
+  })
+
+  const addPhotoFromUrl = useMutation({
+    mutationFn: async (url: string) => {
+      const { blob, ext } = await fetchImageBlobFromUrl(url)
+      const path = `${plantId}/${crypto.randomUUID()}.${ext}`
+      const ct = blob.type || 'image/jpeg'
+      const { error: upErr } = await supabase.storage.from('plant-photos').upload(path, blob, {
+        upsert: false,
+        contentType: ct,
+      })
+      if (upErr) throw upErr
+      const max = photosQuery.data?.reduce((m, p) => Math.max(m, p.sort_order), -1) ?? -1
+      const { error } = await supabase.from('plant_catalog_photos').insert({
+        plant_id: plantId,
+        storage_path: path,
+        sort_order: max + 1,
+        is_cover: (photosQuery.data?.length ?? 0) === 0,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['plant-photos', plantId] })
+      void qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    },
   })
 
   const setCover = useMutation({
@@ -308,6 +337,7 @@ export function PlantDetailPage() {
 
   const [newSectionLabel, setNewSectionLabel] = useState('')
   const [newSectionContent, setNewSectionContent] = useState('')
+  const [photoUrlInput, setPhotoUrlInput] = useState('')
 
   if (!plantId) return <p className="text-red-600">Missing plant id.</p>
   if (plantQuery.isLoading) return <p className="text-slate-600">Loading…</p>
@@ -585,23 +615,57 @@ export function PlantDetailPage() {
           <CardTitle>Photos</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-veera-border)] px-4 py-2 text-sm hover:bg-stone-50">
-            <ImagePlus className="h-4 w-4" />
-            Upload photo
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              disabled={uploadPhoto.isPending}
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                e.target.value = ''
-                if (f) void uploadPhoto.mutateAsync(f)
-              }}
-            />
-          </label>
+          <p className="text-sm text-slate-600">
+            At least one photo is required before you can save other plant details. Add images by file upload or by pasting
+            a direct https link to an image.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-veera-border)] px-4 py-2 text-sm hover:bg-stone-50">
+              <ImagePlus className="h-4 w-4" />
+              Upload photo
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadPhoto.isPending || addPhotoFromUrl.isPending}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ''
+                  if (f) void uploadPhoto.mutateAsync(f)
+                }}
+              />
+            </label>
+            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-md sm:flex-row sm:items-center">
+              <Input
+                type="url"
+                inputMode="url"
+                placeholder="https://… direct image URL"
+                value={photoUrlInput}
+                disabled={addPhotoFromUrl.isPending || uploadPhoto.isPending}
+                onChange={(e) => setPhotoUrlInput(e.target.value)}
+                className="min-w-0 flex-1"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!photoUrlInput.trim() || addPhotoFromUrl.isPending || uploadPhoto.isPending}
+                onClick={() => {
+                  const u = photoUrlInput.trim()
+                  if (!u) return
+                  void addPhotoFromUrl.mutateAsync(u).then(() => setPhotoUrlInput(''))
+                }}
+              >
+                Add from URL
+              </Button>
+            </div>
+          </div>
           {uploadPhoto.isError ? (
             <p className="text-sm text-red-600">Upload failed. Check file size and try again.</p>
+          ) : null}
+          {addPhotoFromUrl.isError ? (
+            <p className="text-sm text-red-600">
+              {addPhotoFromUrl.error instanceof Error ? addPhotoFromUrl.error.message : 'Could not add image from URL.'}
+            </p>
           ) : null}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {(photosQuery.data ?? []).map((p) => (
