@@ -3,8 +3,9 @@ import { Link, Navigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Leaf, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useAuth } from '@/auth/useAuth'
+import { useTheme } from '@/theme/useTheme'
 import { requestAdminSignup } from '@/lib/adminSignupRequest'
 import { supabase, hasSupabaseConfig } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ type SignupForm = z.infer<typeof signupSchema>
 
 export function AdminSignupPage() {
   const { session, loading, isAdmin } = useAuth()
+  const { resolvedTheme } = useTheme()
   const [questions, setQuestions] = useState<GateQuestion[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loadingQuestions, setLoadingQuestions] = useState(true)
@@ -34,6 +36,7 @@ export function AdminSignupPage() {
   const [emailResendWarning, setEmailResendWarning] = useState<string | null>(null)
 
   const configOk = hasSupabaseConfig()
+  const logoSrc = resolvedTheme === 'dark' ? '/3.png' : '/4.png'
 
   const {
     register,
@@ -132,16 +135,14 @@ export function AdminSignupPage() {
   })
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-[var(--color-veera-bg)] px-4 py-10">
+    <div className="flex min-h-svh items-center justify-center bg-veera-bg px-4 py-10">
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-700 text-white">
-              <Leaf className="h-6 w-6" />
-            </div>
+            <img src={logoSrc} alt="Veera" className="h-14 w-auto" />
             <div>
               <CardTitle>Admin account setup</CardTitle>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-veera-muted">
                 Answer the verification questions, then choose your email and password.
               </p>
             </div>
@@ -194,7 +195,7 @@ export function AdminSignupPage() {
 
           {!success && !loadingQuestions && !loadError && questions.length === 2 ? (
             <form onSubmit={onSubmit} className="space-y-4">
-              <div className="rounded-lg border border-[var(--color-veera-border)] bg-stone-50/80 px-4 py-3 text-sm text-slate-700">
+              <div className="rounded-lg border border-veera-border bg-stone-50/80 px-4 py-3 text-sm text-slate-700">
                 <p className="font-medium text-slate-900">Verification</p>
                 <p className="mt-2 text-slate-600">{questions[0].question_text}</p>
                 <Input className="mt-2" autoComplete="off" {...register('answer1')} />
@@ -227,7 +228,7 @@ export function AdminSignupPage() {
 
           <p className="text-center text-sm text-slate-500">
             Already have access?{' '}
-            <Link to="/login" className="font-medium text-emerald-800 hover:underline">
+            <Link to="/login" className="font-medium text-veera-accent hover:underline">
               Sign in
             </Link>
           </p>

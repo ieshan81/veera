@@ -1,24 +1,93 @@
 @import 'tailwindcss';
 
+:root {
+  --veera-bg: #f6faf7;
+  --veera-surface: #ffffff;
+  --veera-border: #dbe6dd;
+  --veera-muted: #5f7284;
+  --veera-fg: #0d1b14;
+  --veera-accent: #1f7a45;
+  --veera-accent-soft: #dff4e6;
+
+  --veera-bg-pattern:
+    radial-gradient(circle at 8% 10%, rgba(119, 181, 141, 0.12), transparent 42%),
+    radial-gradient(circle at 86% 18%, rgba(173, 210, 158, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(246, 250, 247, 0.92));
+}
+
+html[data-theme='dark'] {
+  --veera-bg: #0e1713;
+  --veera-surface: #17231d;
+  --veera-border: #2d3f35;
+  --veera-muted: #9ab0a3;
+  --veera-fg: #edf7ef;
+  --veera-accent: #68b57f;
+  --veera-accent-soft: #20352b;
+
+  --veera-bg-pattern:
+    radial-gradient(circle at 10% 12%, rgba(108, 172, 129, 0.17), transparent 42%),
+    radial-gradient(circle at 86% 22%, rgba(57, 94, 76, 0.46), transparent 38%),
+    linear-gradient(180deg, rgba(17, 26, 22, 0.95), rgba(13, 21, 18, 1));
+}
+
 @theme {
   --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  --color-veera-bg: #f8faf8;
-  --color-veera-surface: #ffffff;
-  --color-veera-border: #e2e8e0;
-  --color-veera-muted: #64748b;
-  --color-veera-fg: #0f172a;
-  --color-veera-accent: #15803d;
-  --color-veera-accent-soft: #dcfce7;
+  --color-veera-bg: var(--veera-bg);
+  --color-veera-surface: var(--veera-surface);
+  --color-veera-border: var(--veera-border);
+  --color-veera-muted: var(--veera-muted);
+  --color-veera-fg: var(--veera-fg);
+  --color-veera-accent: var(--veera-accent);
+  --color-veera-accent-soft: var(--veera-accent-soft);
 }
 
 @layer base {
   html {
     @apply antialiased;
   }
+
   body {
-    @apply m-0 min-h-svh bg-[var(--color-veera-bg)] text-[var(--color-veera-fg)] font-sans;
+    @apply m-0 min-h-svh text-veera-fg font-sans;
+    background-color: var(--color-veera-bg);
+    background-image: var(--veera-bg-pattern);
+    background-attachment: fixed;
+    transition: background-color 180ms ease, color 180ms ease;
   }
+
   #root {
     @apply min-h-svh;
+  }
+}
+
+@layer utilities {
+
+  html[data-theme='dark'] .text-slate-900,
+  html[data-theme='dark'] .text-slate-800,
+  html[data-theme='dark'] .text-slate-700,
+  html[data-theme='dark'] .text-slate-600,
+  html[data-theme='dark'] .text-slate-500,
+  html[data-theme='dark'] .text-slate-400 {
+    color: var(--color-veera-fg);
+  }
+
+  html[data-theme='dark'] .bg-white,
+  html[data-theme='dark'] .bg-white\/80,
+  html[data-theme='dark'] .bg-white\/90,
+  html[data-theme='dark'] .bg-stone-50,
+  html[data-theme='dark'] .bg-stone-50\/50,
+  html[data-theme='dark'] .bg-stone-50\/80,
+  html[data-theme='dark'] .bg-stone-100 {
+    background-color: var(--color-veera-surface);
+  }
+
+  html[data-theme='dark'] .border-slate-200,
+  html[data-theme='dark'] .border-stone-200,
+  html[data-theme='dark'] .divide-slate-200,
+  html[data-theme='dark'] .divide-stone-200 {
+    border-color: var(--color-veera-border);
+  }
+
+  html[data-theme='dark'] .placeholder\:text-slate-400::placeholder {
+    color: var(--color-veera-muted);
   }
 }

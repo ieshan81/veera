@@ -4,8 +4,8 @@ import { Link, Navigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Leaf } from 'lucide-react'
 import { useAuth } from '@/auth/useAuth'
+import { useTheme } from '@/theme/useTheme'
 import { hasSupabaseConfig } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,6 +21,7 @@ type Form = z.infer<typeof schema>
 
 export function LoginPage() {
   const { session, loading, signIn, isAdmin } = useAuth()
+  const { resolvedTheme } = useTheme()
   const [formError, setFormError] = useState<string | null>(null)
   const [needsEmailConfirmHelp, setNeedsEmailConfirmHelp] = useState(false)
   const [resendFeedback, setResendFeedback] = useState<string | null>(null)
@@ -37,6 +38,7 @@ export function LoginPage() {
   }
 
   const configOk = hasSupabaseConfig()
+  const logoSrc = resolvedTheme === 'dark' ? '/3.png' : '/4.png'
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null)
@@ -94,16 +96,14 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-[var(--color-veera-bg)] px-4">
+    <div className="flex min-h-svh items-center justify-center bg-veera-bg px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-700 text-white">
-              <Leaf className="h-6 w-6" />
-            </div>
+            <img src={logoSrc} alt="Veera" className="h-14 w-auto" />
             <div>
               <CardTitle>Sign in to VEERA Admin</CardTitle>
-              <p className="mt-1 text-sm text-slate-500">Use your admin account.</p>
+              <p className="mt-1 text-sm text-veera-muted">Use your admin account.</p>
             </div>
           </div>
         </CardHeader>
@@ -153,7 +153,7 @@ export function LoginPage() {
             </Button>
             <p className="text-center text-sm text-slate-500">
               Need an admin account?{' '}
-              <Link to="/signup" className="font-medium text-emerald-800 hover:underline">
+              <Link to="/signup" className="font-medium text-veera-accent hover:underline">
                 Set up with security questions
               </Link>
             </p>

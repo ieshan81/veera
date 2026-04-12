@@ -15,12 +15,13 @@ export const Button = forwardRef<
       ref={ref}
       disabled={asChild ? undefined : disabled}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:pointer-events-none disabled:opacity-50',
+        'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-veera-accent disabled:pointer-events-none disabled:opacity-50',
         variant === 'primary' &&
-          'bg-emerald-700 text-white shadow-sm hover:bg-emerald-800',
+        'bg-veera-accent text-white shadow-sm hover:brightness-95',
         variant === 'secondary' &&
-          'border border-[var(--color-veera-border)] bg-[var(--color-veera-surface)] text-[var(--color-veera-fg)] hover:bg-stone-50',
-        variant === 'ghost' && 'text-[var(--color-veera-muted)] hover:bg-stone-100 hover:text-[var(--color-veera-fg)]',
+        'border border-veera-border bg-veera-surface text-veera-fg hover:bg-veera-accent-soft',
+        variant === 'ghost' &&
+        'text-veera-muted hover:bg-veera-accent-soft hover:text-veera-fg',
         variant === 'danger' && 'bg-red-600 text-white hover:bg-red-700',
         className,
       )}
