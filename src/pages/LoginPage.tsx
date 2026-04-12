@@ -38,7 +38,7 @@ export function LoginPage() {
   }
 
   const configOk = hasSupabaseConfig()
-  const logoSrc = resolvedTheme === 'dark' ? '/3.png' : '/4.png'
+  const logoSrc = resolvedTheme === 'dark' ? '/dark_background.png' : '/white_background.png'
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null)

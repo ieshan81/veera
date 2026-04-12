@@ -17,7 +17,7 @@ export function Layout() {
   const { signOut, isSuperAdmin } = useAuth()
   const { theme, resolvedTheme, toggleTheme, setTheme } = useTheme()
 
-  const logoSrc = resolvedTheme === 'dark' ? '/3.png' : '/4.png'
+  const logoSrc = resolvedTheme === 'dark' ? '/dark_background.png' : '/white_background.png'
 
   return (
     <div className="flex min-h-svh">

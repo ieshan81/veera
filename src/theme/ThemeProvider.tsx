@@ -44,6 +44,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.theme = nextResolved
       document.documentElement.style.colorScheme = nextResolved
+      const iconHref = nextResolved === 'dark' ? '/dark_background.png' : '/white_background.png'
+      const iconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+      if (iconLink) {
+        iconLink.href = iconHref
+      } else {
+        const link = document.createElement('link')
+        link.rel = 'icon'
+        link.type = 'image/png'
+        link.href = iconHref
+        document.head.appendChild(link)
+      }
     }
   }, [theme])
 
