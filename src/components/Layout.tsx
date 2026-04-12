@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Leaf, LayoutDashboard, Plug, Sprout, Tag, Upload, Users } from 'lucide-react'
+import { LayoutDashboard, Plug, Sprout, Tag, Upload, Users } from 'lucide-react'
 import { useAuth } from '@/auth/useAuth'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -18,14 +18,9 @@ export function Layout() {
   return (
     <div className="flex min-h-svh">
       <aside className="flex w-56 shrink-0 flex-col border-r border-[var(--color-veera-border)] bg-[var(--color-veera-surface)]">
-        <div className="flex items-center gap-2 border-b border-[var(--color-veera-border)] px-4 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-700 text-white">
-            <Leaf className="h-5 w-5" aria-hidden />
-          </div>
-          <div className="text-left">
-            <div className="text-sm font-semibold text-slate-900">VEERA</div>
-            <div className="text-xs text-slate-500">Admin</div>
-          </div>
+        <div className="border-b border-[var(--color-veera-border)] px-4 py-4">
+          <img src="/4.png" alt="Veera" className="h-12 w-auto" />
+          <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Admin</div>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 p-3">
           <NavLink to="/" end className={navClass}>
